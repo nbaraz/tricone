@@ -1,0 +1,10 @@
+[package]
+name = "tricone"
+version = "0.1.0"
+authors = ["Noam Baraz <n0987b@gmail.com>"]
+
+[dependencies]
+
+[[bin]]
+name = "tricone"
+path = "src/bin.rs"

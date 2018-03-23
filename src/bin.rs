@@ -1,5 +1,5 @@
 extern crate tricone;
 
 fn main() {
-    tricone::run_interpreter();
+    tricone::Interpreter::new().run(Vec::new());
 }

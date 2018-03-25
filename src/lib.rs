@@ -180,6 +180,25 @@ impl Interpreter {
         SObject::new(self.create_object(interpreter_consts::UNIT_TYPE_ID))
     }
 
+    fn call_method(&mut self, name: &str, args: &[SObject]) -> SObject {
+        assert!(args.len() >= 1);
+        let code = {
+            let target = args.last().unwrap();
+            let method = self.get_type(target.obj().type_)
+                .methods
+                .get(name)
+                .expect("Called nonexistent method. TODO: runtime error");
+
+            if method.arity != args.len() - 1 {
+                panic!("Wrong number of arguments. TODO: runtime error");
+            }
+
+            Rc::clone(&method.code.0)
+        };
+
+        (code)(self, &args)
+    }
+
     fn run_instruction(&mut self, insn: &Instruction) -> SObject {
         use Instruction::*;
         match *insn {
@@ -213,26 +232,11 @@ impl Interpreter {
                 }
 
                 let op_stack_len = self.thread.operation_stack.len();
-
                 let args = self.thread
                     .operation_stack
                     .split_off(op_stack_len - num_args);
 
-                let code = {
-                    let target = args.last().unwrap();
-                    let method = self.get_type(target.obj().type_)
-                        .methods
-                        .get(name)
-                        .expect("Called nonexistent method. TODO: runtime error");
-
-                    if method.arity != num_args - 1 {
-                        panic!("Wrong number of arguments. TODO: runtime error");
-                    }
-
-                    Rc::clone(&method.code.0)
-                };
-
-                (code)(self, &args)
+                self.call_method(name, &args)
             }
             GetMember { ref name } => {
                 let item = self.thread

@@ -312,3 +312,4 @@ impl Interpreter {
 
 pub mod hello;
 mod int;
+mod generic;

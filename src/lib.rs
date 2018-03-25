@@ -70,6 +70,12 @@ pub struct Type {
     methods: HashMap<String, Method>,
 }
 
+impl Type {
+    fn get_method(&self, name: &str) -> Option<Method> {
+        self.methods.get(name).map(Method::dup)
+    }
+}
+
 pub struct SObject(Rc<RefCell<Object>>);
 
 impl SObject {
@@ -136,6 +142,8 @@ mod interpreter_consts {
     pub const CORE_MODULE_ID: ::ModuleIndex = ::ModuleIndex(0);
     pub const SCOPE_TYPE_ID: ::TypeIndex = ::TypeIndex(CORE_MODULE_ID, 0);
     pub const UNIT_TYPE_ID: ::TypeIndex = ::TypeIndex(CORE_MODULE_ID, 1);
+
+    pub const INIT_METHOD_NAME: &'static str = "init";
 }
 
 impl Interpreter {
@@ -192,22 +200,29 @@ impl Interpreter {
         TypeIndex(modidx, module.types.len() - 1)
     }
 
-    fn create_object(&self, tyidx: TypeIndex) -> Object {
-        let ty = self.get_type(tyidx);
-
-        Object {
+    fn create_object(&mut self, tyidx: TypeIndex) -> SObject {
+        let obj = SObject::new(Object {
             members: HashMap::new(),
             type_: tyidx,
             data: vec![],
+        });
+
+        if let Some(method) = self.get_type(tyidx)
+            .get_method(interpreter_consts::INIT_METHOD_NAME)
+        {
+            let res = method.call(self, &[obj.dup()]).unwrap();
+            assert_eq!(interpreter_consts::UNIT_TYPE_ID, res.obj().type_);
         }
+
+        obj
     }
 
-    fn get_unit_object(&self) -> SObject {
-        SObject::new(self.create_object(interpreter_consts::UNIT_TYPE_ID))
+    fn get_unit_object(&mut self) -> SObject {
+        self.create_object(interpreter_consts::UNIT_TYPE_ID)
     }
 
     fn get_method(&self, obj: &Object, name: &str) -> Option<Method> {
-        self.get_type(obj.type_).methods.get(name).map(Method::dup)
+        self.get_type(obj.type_).get_method(name)
     }
 
     fn call_method(&mut self, name: &str, args: &[SObject]) -> SObject {
@@ -221,7 +236,7 @@ impl Interpreter {
     fn run_instruction(&mut self, insn: &Instruction) -> SObject {
         use Instruction::*;
         match *insn {
-            CreateObject { type_ } => SObject::new(self.create_object(type_)),
+            CreateObject { type_ } => self.create_object(type_),
             Assign { ref name } => {
                 let mut scope = self.thread
                     .operation_stack
@@ -273,7 +288,7 @@ impl Interpreter {
     }
 
     fn create_code(&self, instructions: Vec<Instruction>) -> Code {
-        Code(Rc::new(move |interpreter, args| {
+        Code(Rc::new(move |interpreter, _args| {
             let mut prev = None;
             for insn in instructions.iter() {
                 if let Some(res) = prev {
@@ -295,8 +310,18 @@ fn register_hello(interpreter: &mut Interpreter) -> TypeIndex {
         "hello".to_owned(),
         Method {
             arity: 0,
-            code: Code(Rc::new(move |itrp, args| {
+            code: Code(Rc::new(move |itrp, _args| {
                 println!("hello from method!!");
+                itrp.get_unit_object()
+            })),
+        },
+    );
+    hello_ty.methods.insert(
+        "init".to_owned(),
+        Method {
+            arity: 0,
+            code: Code(Rc::new(move |itrp, _args| {
+                println!("hello from INIT method!!");
                 itrp.get_unit_object()
             })),
         },

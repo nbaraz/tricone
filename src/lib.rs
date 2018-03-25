@@ -166,13 +166,17 @@ impl Interpreter {
             ],
         };
 
-        Interpreter {
+        let mut interpreter = Interpreter {
             modules: vec![core_module],
             thread: Thread {
                 operation_stack: vec![],
                 scope_stack: vec![],
             },
-        }
+        };
+
+        int::register_int_type(&mut interpreter);
+
+        interpreter
     }
 
     fn get_module(&self, idx: ModuleIndex) -> &Module {
@@ -307,3 +311,4 @@ impl Interpreter {
 }
 
 pub mod hello;
+mod int;

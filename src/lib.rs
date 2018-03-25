@@ -67,6 +67,7 @@ impl SObject {
 pub struct Object {
     members: HashMap<String, SObject>,
     type_: TypeIndex,
+    data: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -117,6 +118,7 @@ impl Interpreter {
             globals: SObject::new(Object {
                 members: HashMap::new(),
                 type_: interpreter_consts::SCOPE_TYPE_ID,
+                data: vec![],
             }),
             types: vec![
                 Type {
@@ -172,6 +174,7 @@ impl Interpreter {
         Object {
             members: HashMap::new(),
             type_: tyidx,
+            data: vec![],
         }
     }
 

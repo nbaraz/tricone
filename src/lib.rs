@@ -175,8 +175,8 @@ impl Interpreter {
         }
     }
 
-    fn get_unit_object(&self) -> Object {
-        self.create_object(interpreter_consts::UNIT_TYPE_ID)
+    fn get_unit_object(&self) -> SObject {
+        SObject::new(self.create_object(interpreter_consts::UNIT_TYPE_ID))
     }
 
     fn run_instruction(interpreter: &RefCell<Interpreter>, insn: &Instruction) -> SObject {
@@ -196,7 +196,7 @@ impl Interpreter {
                     .pop()
                     .expect("Stack needs 2 items, only 1 found");
                 scope.obj_mut().members.insert(name.clone(), item);
-                SObject::new(self_.get_unit_object())
+                self_.get_unit_object()
             }
             GetTopScope => interpreter
                 .borrow()
@@ -268,7 +268,7 @@ impl Interpreter {
                 }
                 prev = Some(Interpreter::run_instruction(&*interpreter, insn));
             }
-            prev.unwrap_or(SObject::new(interpreter.borrow().get_unit_object()))
+            prev.unwrap_or(interpreter.borrow().get_unit_object())
         }))
     }
 }
@@ -286,7 +286,7 @@ fn register_hello(interpreter: Rc<RefCell<Interpreter>>) -> TypeIndex {
             arity: 0,
             code: Code(Rc::new(move |args| {
                 println!("hello from method!!");
-                SObject::new(itrp.borrow().get_unit_object())
+                itrp.borrow().get_unit_object()
             })),
         },
     );

@@ -5,26 +5,16 @@ fn register_hello(interpreter: &mut Interpreter) -> TypeIndex {
         name: "Hello".to_owned(),
         methods: HashMap::new(),
     };
-    hello_ty.methods.insert(
-        "hello".to_owned(),
-        Method {
-            arity: 0,
-            code: Code(Rc::new(move |itrp, _args| {
+
+    hello_ty.register_method("hello", 0, move |itrp, _args| {
                 println!("hello from method!!");
                 itrp.get_unit_object()
-            })),
-        },
-    );
-    hello_ty.methods.insert(
-        interpreter_consts::INIT_METHOD_NAME.to_owned(),
-        Method {
-            arity: 0,
-            code: Code(Rc::new(move |itrp, _args| {
+            });
+
+    hello_ty.register_method(interpreter_consts::INIT_METHOD_NAME, 0, move |itrp, _args| {
                 println!("hello from INIT method!!");
                 itrp.get_unit_object()
-            })),
-        },
-    );
+            });
 
     interpreter.register_type(interpreter_consts::CORE_MODULE_ID, hello_ty)
 }

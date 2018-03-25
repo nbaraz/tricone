@@ -36,15 +36,13 @@ pub fn create_type_for<T>(interpreter: &mut Interpreter, name: &str) -> Type {
         methods: HashMap::new(),
     };
 
-    ty.methods.insert(
-        interpreter_consts::INIT_METHOD_NAME.to_owned(),
-        Method {
-            arity: 0,
-            code: Code(Rc::new(move |itrp, args| {
-                let mut target = args[0].obj_mut();
-                target.data.resize(mem::size_of::<T>(), 0);
-                itrp.get_unit_object()
-            })),
+    ty.register_method(
+        interpreter_consts::INIT_METHOD_NAME,
+        0,
+        move |itrp, args| {
+            let mut target = args[0].obj_mut();
+            target.data.resize(mem::size_of::<T>(), 0);
+            itrp.get_unit_object()
         },
     );
 
@@ -52,25 +50,19 @@ pub fn create_type_for<T>(interpreter: &mut Interpreter, name: &str) -> Type {
 }
 
 pub fn impl_add_for<T: Add + Clone>(ty: &mut Type) {
-    ty.methods.insert(
-        "add".to_owned(),
-        Method {
-            arity: 1,
-            code: Code(Rc::new(move |itrp, args| {
-                let a = args[0].obj();
-                let b = args[1].obj();
+    ty.register_method("add", 1, move |itrp, args| {
+        let a = args[0].obj();
+        let b = args[1].obj();
 
-                assert_eq!(a.type_, b.type_);
+        assert_eq!(a.type_, b.type_);
 
-                let res_obj = itrp.create_object(a.type_);
-                unsafe {
-                    let mut res_ = res_obj.obj_mut();
-                    let (val_a, val_b): (&T, &T) = (get_unsafe_ref(&a), get_unsafe_ref(&b));
-                    put_unsafe(&mut res_, Add::add(val_a.clone(), val_b.clone()));
-                }
+        let res_obj = itrp.create_object(a.type_);
+        unsafe {
+            let mut res_ = res_obj.obj_mut();
+            let (val_a, val_b): (&T, &T) = (get_unsafe_ref(&a), get_unsafe_ref(&b));
+            put_unsafe(&mut res_, Add::add(val_a.clone(), val_b.clone()));
+        }
 
-                res_obj
-            })),
-        },
-    );
+        res_obj
+    });
 }

@@ -34,14 +34,24 @@ pub enum Instruction {
 
 pub struct Code(Rc<Fn(&mut Interpreter, &[SObject]) -> SObject>);
 
-pub struct Method {
+pub struct Function {
     code: Code,
     arity: usize,
 }
 
-impl Method {
-    fn dup(&self) -> Method {
-        Method {
+impl Function {
+    fn new<F>(code: F, arity: usize) -> Function
+    where
+        F: Fn(&mut Interpreter, &[SObject]) -> SObject + 'static,
+    {
+        Function {
+            code: Code(Rc::new(code)),
+            arity: arity,
+        }
+    }
+
+    fn dup(&self) -> Function {
+        Function {
             code: Code(Rc::clone(&self.code.0)),
             arity: self.arity,
         }
@@ -52,7 +62,7 @@ impl Method {
         interpreter: &mut Interpreter,
         args: &[SObject],
     ) -> Result<SObject, TriconeError> {
-        if self.arity + 1 == args.len() {
+        if self.arity == args.len() {
             Ok((self.code.0)(interpreter, args))
         } else {
             Err(TriconeError {
@@ -67,12 +77,20 @@ pub struct TypeIndex(ModuleIndex, usize);
 
 pub struct Type {
     name: String,
-    methods: HashMap<String, Method>,
+    methods: HashMap<String, Function>,
 }
 
 impl Type {
-    fn get_method(&self, name: &str) -> Option<Method> {
-        self.methods.get(name).map(Method::dup)
+    fn get_method(&self, name: &str) -> Option<Function> {
+        self.methods.get(name).map(Function::dup)
+    }
+
+    pub fn register_method<F>(&mut self, name: &str, arity: usize, code: F)
+    where
+        F: Fn(&mut Interpreter, &[SObject]) -> SObject + 'static,
+    {
+        self.methods
+            .insert(name.to_owned(), Function::new(code, arity + 1));
     }
 }
 
@@ -225,7 +243,7 @@ impl Interpreter {
         self.create_object(interpreter_consts::UNIT_TYPE_ID)
     }
 
-    fn get_method(&self, obj: &Object, name: &str) -> Option<Method> {
+    fn get_method(&self, obj: &Object, name: &str) -> Option<Function> {
         self.get_type(obj.type_).get_method(name)
     }
 
@@ -295,9 +313,7 @@ impl Interpreter {
         Code(Rc::new(move |interpreter, _args| {
             let mut prev = None;
             let scope = interpreter.create_object(interpreter_consts::SCOPE_TYPE_ID);
-            interpreter.thread.scope_stack.push(Scope {
-                vars: scope,
-            });
+            interpreter.thread.scope_stack.push(Scope { vars: scope });
             for insn in instructions.iter() {
                 if let Some(res) = prev {
                     interpreter.thread.operation_stack.push(res)

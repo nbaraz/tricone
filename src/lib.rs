@@ -29,7 +29,7 @@ pub enum Instruction {
     },
 }
 
-pub struct Code(Rc<Fn(&[SObject]) -> SObject>);
+pub struct Code(Rc<Fn(&mut Interpreter, &[SObject]) -> SObject>);
 
 pub struct Method {
     code: Code,
@@ -113,7 +113,7 @@ mod interpreter_consts {
 }
 
 impl Interpreter {
-    pub fn new() -> Rc<RefCell<Interpreter>> {
+    pub fn new() -> Interpreter {
         let core_module = Module {
             globals: SObject::new(Object {
                 members: HashMap::new(),
@@ -132,15 +132,13 @@ impl Interpreter {
             ],
         };
 
-        let interpreter = Rc::new(RefCell::new(Interpreter {
+        Interpreter {
             modules: vec![core_module],
             thread: Thread {
                 operation_stack: vec![],
                 scope_stack: vec![],
             },
-        }));
-
-        interpreter
+        }
     }
 
     fn get_module(&self, idx: ModuleIndex) -> &Module {
@@ -182,28 +180,23 @@ impl Interpreter {
         SObject::new(self.create_object(interpreter_consts::UNIT_TYPE_ID))
     }
 
-    fn run_instruction(interpreter: &RefCell<Interpreter>, insn: &Instruction) -> SObject {
+    fn run_instruction(&mut self, insn: &Instruction) -> SObject {
         use Instruction::*;
         match *insn {
-            CreateObject { type_ } => SObject::new(interpreter.borrow().create_object(type_)),
+            CreateObject { type_ } => SObject::new(self.create_object(type_)),
             Assign { ref name } => {
-                let mut self_ = interpreter.borrow_mut();
-                let mut scope = self_
-                    .thread
+                let mut scope = self.thread
                     .operation_stack
                     .pop()
                     .expect("Stack needs 2 items, 0 found");
-                let item = self_
-                    .thread
+                let item = self.thread
                     .operation_stack
                     .pop()
                     .expect("Stack needs 2 items, only 1 found");
                 scope.obj_mut().members.insert(name.clone(), item);
-                self_.get_unit_object()
+                self.get_unit_object()
             }
-            GetTopScope => interpreter
-                .borrow()
-                .thread
+            GetTopScope => self.thread
                 .scope_stack
                 .last()
                 .expect("Must have at least one scope")
@@ -214,41 +207,35 @@ impl Interpreter {
                 mut num_args,
             } => {
                 num_args += 1;
-                let op_stack_len;
-                let (code, args) = {
-                    let mut self_ = interpreter.borrow_mut();
-                    if self_.thread.operation_stack.len() < num_args {
-                        panic!("Not enough arguments passed! TODO: runtime error");
+
+                if self.thread.operation_stack.len() < num_args {
+                    panic!("Not enough arguments passed! TODO: runtime error");
+                }
+
+                let op_stack_len = self.thread.operation_stack.len();
+
+                let args = self.thread
+                    .operation_stack
+                    .split_off(op_stack_len - num_args);
+
+                let code = {
+                    let target = args.last().unwrap();
+                    let method = self.get_type(target.obj().type_)
+                        .methods
+                        .get(name)
+                        .expect("Called nonexistent method. TODO: runtime error");
+
+                    if method.arity != num_args - 1 {
+                        panic!("Wrong number of arguments. TODO: runtime error");
                     }
-                    let code = {
-                        let target = self_.thread.operation_stack.last().unwrap();
-                        let method = self_
-                            .get_type(target.obj().type_)
-                            .methods
-                            .get(name)
-                            .expect("Called nonexistent method. TODO: runtime error");
 
-                        if method.arity != num_args - 1 {
-                            panic!("Wrong number of arguments. TODO: runtime error");
-                        }
-
-                        Rc::clone(&method.code.0)
-                    };
-
-                    op_stack_len = self_.thread.operation_stack.len();
-                    let args = self_
-                        .thread
-                        .operation_stack
-                        .split_off(op_stack_len - num_args);
-
-                    (code, args)
+                    Rc::clone(&method.code.0)
                 };
-                (code)(&args)
+
+                (code)(self, &args)
             }
             GetMember { ref name } => {
-                let item = interpreter
-                    .borrow_mut()
-                    .thread
+                let item = self.thread
                     .operation_stack
                     .pop()
                     .expect("Stack needs 1 item, was empty");
@@ -262,23 +249,21 @@ impl Interpreter {
         }
     }
 
-    fn create_code(interpreter: Rc<RefCell<Interpreter>>, instructions: Vec<Instruction>) -> Code {
-        Code(Rc::new(move |args| {
+    fn create_code(&self, instructions: Vec<Instruction>) -> Code {
+        Code(Rc::new(move |interpreter, args| {
             let mut prev = None;
             for insn in instructions.iter() {
                 if let Some(res) = prev {
-                    interpreter.borrow_mut().thread.operation_stack.push(res)
+                    interpreter.thread.operation_stack.push(res)
                 }
-                prev = Some(Interpreter::run_instruction(&*interpreter, insn));
+                prev = Some(interpreter.run_instruction(insn));
             }
-            prev.unwrap_or(interpreter.borrow().get_unit_object())
+            prev.unwrap_or(interpreter.get_unit_object())
         }))
     }
 }
 
-fn register_hello(interpreter: Rc<RefCell<Interpreter>>) -> TypeIndex {
-    let itrp = Rc::clone(&interpreter);
-
+fn register_hello(interpreter: &mut Interpreter) -> TypeIndex {
     let mut hello_ty = Type {
         name: "Hello".to_owned(),
         methods: HashMap::new(),
@@ -287,23 +272,21 @@ fn register_hello(interpreter: Rc<RefCell<Interpreter>>) -> TypeIndex {
         "hello".to_owned(),
         Method {
             arity: 0,
-            code: Code(Rc::new(move |args| {
+            code: Code(Rc::new(move |itrp, args| {
                 println!("hello from method!!");
-                itrp.borrow().get_unit_object()
+                itrp.get_unit_object()
             })),
         },
     );
 
-    interpreter
-        .borrow_mut()
-        .register_type(interpreter_consts::CORE_MODULE_ID, hello_ty)
+    interpreter.register_type(interpreter_consts::CORE_MODULE_ID, hello_ty)
 }
 
-pub fn do_hello(interpreter: Rc<RefCell<Interpreter>>) {
-    let hello_idx = register_hello(Rc::clone(&interpreter));
+pub fn do_hello(interpreter: &mut Interpreter) {
+    let hello_idx = register_hello(interpreter);
     assert_eq!(
         Some(hello_idx),
-        interpreter.borrow().lookup_type(interpreter_consts::CORE_MODULE_ID, "Hello"),
+        interpreter.lookup_type(interpreter_consts::CORE_MODULE_ID, "Hello"),
     );
 
     use Instruction::*;
@@ -317,5 +300,5 @@ pub fn do_hello(interpreter: Rc<RefCell<Interpreter>>) {
             },
         ],
     );
-    (code.0)(&[]);
+    (code.0)(interpreter, &[]);
 }

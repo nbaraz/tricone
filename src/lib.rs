@@ -137,13 +137,13 @@ pub struct Interpreter {
     thread: Thread,
 }
 
-mod interpreter_consts {
+pub(crate) mod interpreter_consts {
     // modules depend on objects and vice-versa, need to bootstrap the core module
     pub const CORE_MODULE_ID: ::ModuleIndex = ::ModuleIndex(0);
     pub const SCOPE_TYPE_ID: ::TypeIndex = ::TypeIndex(CORE_MODULE_ID, 0);
     pub const UNIT_TYPE_ID: ::TypeIndex = ::TypeIndex(CORE_MODULE_ID, 1);
 
-    pub const INIT_METHOD_NAME: &'static str = "init";
+    pub const INIT_METHOD_NAME: &'static str = "create";
 }
 
 impl Interpreter {
@@ -306,52 +306,4 @@ impl Interpreter {
     }
 }
 
-fn register_hello(interpreter: &mut Interpreter) -> TypeIndex {
-    let mut hello_ty = Type {
-        name: "Hello".to_owned(),
-        methods: HashMap::new(),
-    };
-    hello_ty.methods.insert(
-        "hello".to_owned(),
-        Method {
-            arity: 0,
-            code: Code(Rc::new(move |itrp, _args| {
-                println!("hello from method!!");
-                itrp.get_unit_object()
-            })),
-        },
-    );
-    hello_ty.methods.insert(
-        "init".to_owned(),
-        Method {
-            arity: 0,
-            code: Code(Rc::new(move |itrp, _args| {
-                println!("hello from INIT method!!");
-                itrp.get_unit_object()
-            })),
-        },
-    );
-
-    interpreter.register_type(interpreter_consts::CORE_MODULE_ID, hello_ty)
-}
-
-pub fn do_hello(interpreter: &mut Interpreter) {
-    let hello_idx = register_hello(interpreter);
-    assert_eq!(
-        Some(hello_idx),
-        interpreter.lookup_type(interpreter_consts::CORE_MODULE_ID, "Hello"),
-    );
-
-    use Instruction::*;
-    let code = Interpreter::create_code(
-        interpreter,
-        vec![
-            CreateObject { type_: hello_idx },
-            CallMethod {
-                name: "hello".to_owned(),
-                num_args: 0,
-            },
-        ],
-    );
-    (code.0)(interpreter, &[]);
-}
+pub mod hello;

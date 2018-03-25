@@ -87,7 +87,7 @@ impl SObject {
         self.0.borrow()
     }
 
-    fn obj_mut(&mut self) -> RefMut<Object> {
+    fn obj_mut(&self) -> RefMut<Object> {
         self.0.borrow_mut()
     }
 

@@ -1,7 +1,6 @@
 use std::collections::HashMap;
-use std::cell::RefCell;
-use std::rc::{Rc, Weak};
-use std::ops::Range;
+use std::cell::{Ref, RefCell, RefMut};
+use std::rc::Rc;
 
 enum ErrorKind {
     IndexError,
@@ -11,136 +10,149 @@ struct TriconeError {
     kind: ErrorKind,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum Instruction {
-
+    CreateObject {
+        type_: TypeIndex,
+    },
+    Assign {
+        // Assign a = pop(), b = pop(), a[name] = `b`
+        name: String,
+    },
+    GetTopScope,
+    CallMethod {
+        name: String,
+        num_args: usize,
+    },
+    GetMember {
+        name: String,
+    },
 }
 
-#[derive(Debug)]
-pub struct SharedSlice {
-    data: Rc<RefCell<Vec<u8>>>,
-    bounds: Range<usize>,
+pub struct Code(Rc<Fn(&[SObject]) -> SObject>);
+
+pub struct Method {
+    code: Code,
+    arity: usize,
 }
-
-impl SharedSlice {
-    fn slice(&self, range: Range<usize>) -> SharedSlice {
-        let absolute_range = (range.start + self.bounds.start)..(range.end + self.bounds.start);
-        if absolute_range.end > self.bounds.end {
-            panic!("Attempted to slice beyond bounds");
-        }
-        SharedSlice {
-            data: Rc::clone(&self.data),
-            bounds: absolute_range,
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct PackedObject {
-    type_: TypeIndex,
-    data: SharedSlice,
-}
-
-impl PackedObject {
-    fn get_member(&self, interpreter: &Interpreter, idx: usize) -> PackedObject {
-        let ty = interpreter.get_type(self.type_);
-        let te = &ty.composition[idx];
-
-        match te.embedding_kind {
-            EmbeddingKind::Embedded => {
-                return PackedObject {
-                    type_: te.type_,
-                    data: self.data.slice(ty.member_data_range(interpreter, idx)),
-                }
-            }
-            _ => panic!(""),
-        }
-    }
-}
-
-pub struct Method;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum EmbeddingKind {
-    Embedded,
-    Ref,
-}
-
-#[derive(Debug, Clone, Copy)]
 pub struct TypeIndex(ModuleIndex, usize);
-pub struct TypeEmbedding {
-    type_: TypeIndex,
-    embedding_kind: EmbeddingKind,
-}
-
-impl TypeEmbedding {
-    fn total_size(&self, interpreter: &Interpreter) -> Option<usize> {
-        if let EmbeddingKind::Embedded = self.embedding_kind {
-            Some(interpreter.get_type(self.type_).total_size(interpreter))
-        } else {
-            None
-        }
-    }
-}
 
 pub struct Type {
+    name: String,
     methods: HashMap<String, Method>,
-    composition: Vec<TypeEmbedding>,
-    required_size: usize,
 }
 
-impl Type {
-    fn total_size(&self, interpreter: &Interpreter) -> usize {
-        return self.required_size
-            + self.composition
-                .iter()
-                .map(|te| te.total_size(interpreter).unwrap_or(0))
-                .sum::<usize>();
+pub struct SObject(Rc<RefCell<Object>>);
+
+impl SObject {
+    fn new(obj: Object) -> SObject {
+        SObject(Rc::new(RefCell::new(obj)))
     }
 
-    fn num_refs(&self) -> usize {
-        self.composition
-            .iter()
-            .filter(|te| te.embedding_kind != EmbeddingKind::Embedded)
-            .count()
+    fn obj(&self) -> Ref<Object> {
+        self.0.borrow()
     }
 
-    fn member_data_range(&self, interpreter: &Interpreter, idx: usize) -> Range<usize> {
-        let (offset, size) = self.composition[..idx]
-            .iter()
-            .map(|te| te.total_size(interpreter))
-            .fold((0, None), |acc, size| (acc.0 + acc.1.unwrap_or(0), size));
-        assert!(size.is_some());
+    fn obj_mut(&mut self) -> RefMut<Object> {
+        self.0.borrow_mut()
+    }
 
-        (offset..size.expect("Should only be called for embedded members... This is a bug"))
+    fn dup(&self) -> SObject {
+        SObject(Rc::clone(&self.0))
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct ModuleIndex(usize);
+pub struct Object {
+    members: HashMap<String, SObject>,
+    type_: TypeIndex,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ModuleIndex(pub usize);
 pub struct Module {
-    globals: HashMap<String, PackedObject>,
+    globals: SObject,
     types: Vec<Type>,
+}
+
+impl Module {
+    fn lookup_type_mut(&mut self, name: &str) -> Option<&mut Type> {
+        self.types.iter_mut().filter(|ty| ty.name == name).next()
+    }
+
+    fn lookup_type_index(&self, name: &str) -> Option<usize> {
+        self.types
+            .iter()
+            .enumerate()
+            .filter_map(|(i, ty)| if ty.name == name { Some(i) } else { None })
+            .next()
+    }
+}
+
+struct Scope {
+    vars: SObject,
+}
+
+struct Thread {
+    operation_stack: Vec<SObject>,
+    scope_stack: Vec<Scope>,
 }
 
 pub struct Interpreter {
     modules: Vec<Module>,
+    thread: Thread,
+}
+
+mod interpreter_consts {
+    // modules depend on objects and vice-versa, need to bootstrap the core module
+    pub const CORE_MODULE_ID: ::ModuleIndex = ::ModuleIndex(0);
+    pub const SCOPE_TYPE_ID: ::TypeIndex = ::TypeIndex(CORE_MODULE_ID, 0);
+    pub const UNIT_TYPE_ID: ::TypeIndex = ::TypeIndex(CORE_MODULE_ID, 1);
 }
 
 impl Interpreter {
-    pub fn new() -> Interpreter {
-        Interpreter {
-            modules: vec![],
-        }
-    }
+    pub fn new() -> Rc<RefCell<Interpreter>> {
+        let core_module = Module {
+            globals: SObject::new(Object {
+                members: HashMap::new(),
+                type_: interpreter_consts::SCOPE_TYPE_ID,
+            }),
+            types: vec![
+                Type {
+                    name: "Scope".to_owned(),
+                    methods: HashMap::new(),
+                },
+                Type {
+                    name: "Unit".to_owned(),
+                    methods: HashMap::new(),
+                },
+            ],
+        };
 
-    pub fn run<I: IntoIterator<Item = Instruction>>(&mut self, instructions: I) {
-        println!("Welcome!");
-        for insn in instructions {}
+        let interpreter = Rc::new(RefCell::new(Interpreter {
+            modules: vec![core_module],
+            thread: Thread {
+                operation_stack: vec![],
+                scope_stack: vec![],
+            },
+        }));
+
+        interpreter
     }
 
     fn get_module(&self, idx: ModuleIndex) -> &Module {
         return &self.modules[idx.0];
+    }
+
+    fn get_module_mut(&mut self, idx: ModuleIndex) -> &mut Module {
+        return &mut self.modules[idx.0];
+    }
+
+    fn lookup_type(&self, modidx: ModuleIndex, name: &str) -> Option<TypeIndex> {
+        self.get_module(modidx)
+            .lookup_type_index(name)
+            .map(|idx| TypeIndex(modidx, idx))
     }
 
     fn get_type(&self, idx: TypeIndex) -> &Type {
@@ -148,17 +160,159 @@ impl Interpreter {
         &self.get_module(modidx).types[tyidx]
     }
 
-    fn create_packed_object(&self, tyidx: TypeIndex) -> PackedObject {
-        let ty = self.get_type(tyidx);
-        let total_size = ty.total_size(self);
-        let num_refs = ty.num_refs();
+    fn register_type(&mut self, modidx: ModuleIndex, ty: Type) -> TypeIndex {
+        let module = self.get_module_mut(modidx);
+        module.types.push(ty);
+        TypeIndex(modidx, module.types.len() - 1)
+    }
 
-        PackedObject {
+    fn create_object(&self, tyidx: TypeIndex) -> Object {
+        let _ = self.get_type(tyidx);
+
+        Object {
+            members: HashMap::new(),
             type_: tyidx,
-            data: SharedSlice {
-                data: Rc::new(RefCell::new(vec![0; total_size])),
-                bounds: 0..ty.required_size,
-            },
         }
     }
+
+    fn get_unit_object(&self) -> Object {
+        self.create_object(interpreter_consts::UNIT_TYPE_ID)
+    }
+
+    fn run_instruction(interpreter: &RefCell<Interpreter>, insn: &Instruction) -> SObject {
+        use Instruction::*;
+        match *insn {
+            CreateObject { type_ } => SObject::new(interpreter.borrow().create_object(type_)),
+            Assign { ref name } => {
+                let mut self_ = interpreter.borrow_mut();
+                let mut scope = self_
+                    .thread
+                    .operation_stack
+                    .pop()
+                    .expect("Stack needs 2 items, 0 found");
+                let item = self_
+                    .thread
+                    .operation_stack
+                    .pop()
+                    .expect("Stack needs 2 items, only 1 found");
+                scope.obj_mut().members.insert(name.clone(), item);
+                SObject::new(self_.get_unit_object())
+            }
+            GetTopScope => interpreter
+                .borrow()
+                .thread
+                .scope_stack
+                .last()
+                .expect("Must have at least one scope")
+                .vars
+                .dup(),
+            CallMethod {
+                ref name,
+                mut num_args,
+            } => {
+                num_args += 1;
+                let op_stack_len;
+                let (code, args) = {
+                    let mut self_ = interpreter.borrow_mut();
+                    if self_.thread.operation_stack.len() < num_args {
+                        panic!("Not enough arguments passed! TODO: runtime error");
+                    }
+                    let code = {
+                        let target = self_.thread.operation_stack.last().unwrap();
+                        let method = self_
+                            .get_type(target.obj().type_)
+                            .methods
+                            .get(name)
+                            .expect("Called nonexistent method. TODO: runtime error");
+
+                        if method.arity != num_args - 1 {
+                            panic!("Wrong number of arguments. TODO: runtime error");
+                        }
+
+                        Rc::clone(&method.code.0)
+                    };
+
+                    op_stack_len = self_.thread.operation_stack.len();
+                    let args = self_
+                        .thread
+                        .operation_stack
+                        .split_off(op_stack_len - num_args);
+
+                    (code, args)
+                };
+                (code)(&args)
+            }
+            GetMember { ref name } => {
+                let item = interpreter
+                    .borrow_mut()
+                    .thread
+                    .operation_stack
+                    .pop()
+                    .expect("Stack needs 1 item, was empty");
+                let temp_obj = &item.obj();
+                temp_obj
+                    .members
+                    .get(name)
+                    .expect("Requested nonexistent member. TODO: runtime error")
+                    .dup()
+            }
+        }
+    }
+
+    fn create_code(interpreter: Rc<RefCell<Interpreter>>, instructions: Vec<Instruction>) -> Code {
+        Code(Rc::new(move |args| {
+            let mut prev = None;
+            for insn in instructions.iter() {
+                if let Some(res) = prev {
+                    interpreter.borrow_mut().thread.operation_stack.push(res)
+                }
+                prev = Some(Interpreter::run_instruction(&*interpreter, insn));
+            }
+            prev.unwrap_or(SObject::new(interpreter.borrow().get_unit_object()))
+        }))
+    }
+}
+
+fn register_hello(interpreter: Rc<RefCell<Interpreter>>) -> TypeIndex {
+    let itrp = Rc::clone(&interpreter);
+
+    let mut hello_ty = Type {
+        name: "Hello".to_owned(),
+        methods: HashMap::new(),
+    };
+    hello_ty.methods.insert(
+        "hello".to_owned(),
+        Method {
+            arity: 0,
+            code: Code(Rc::new(move |args| {
+                println!("hello from method!!");
+                SObject::new(itrp.borrow().get_unit_object())
+            })),
+        },
+    );
+
+    interpreter
+        .borrow_mut()
+        .register_type(interpreter_consts::CORE_MODULE_ID, hello_ty)
+}
+
+pub fn do_hello(interpreter: Rc<RefCell<Interpreter>>) {
+    let hello_idx = register_hello(Rc::clone(&interpreter));
+    assert_eq!(
+        Some(hello_idx),
+        interpreter.borrow().lookup_type(interpreter_consts::CORE_MODULE_ID, "Hello"),
+    );
+
+    use Instruction::*;
+    let code = Interpreter::create_code(
+        interpreter,
+        vec![
+            CreateObject { type_: hello_idx },
+            CallMethod {
+                name: "hello".to_owned(),
+                num_args: 0,
+            },
+        ],
+    );
+    (code.0)(&[]);
 }

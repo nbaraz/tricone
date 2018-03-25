@@ -2,10 +2,13 @@ use std::collections::HashMap;
 use std::cell::{Ref, RefCell, RefMut};
 use std::rc::Rc;
 
+#[derive(Debug, Clone)]
 enum ErrorKind {
     IndexError,
+    WrongArgumentCount,
 }
 
+#[derive(Debug, Clone)]
 struct TriconeError {
     kind: ErrorKind,
 }
@@ -34,6 +37,29 @@ pub struct Code(Rc<Fn(&mut Interpreter, &[SObject]) -> SObject>);
 pub struct Method {
     code: Code,
     arity: usize,
+}
+
+impl Method {
+    fn dup(&self) -> Method {
+        Method {
+            code: Code(Rc::clone(&self.code.0)),
+            arity: self.arity,
+        }
+    }
+
+    fn call(
+        &self,
+        interpreter: &mut Interpreter,
+        args: &[SObject],
+    ) -> Result<SObject, TriconeError> {
+        if self.arity + 1 == args.len() {
+            Ok((self.code.0)(interpreter, args))
+        } else {
+            Err(TriconeError {
+                kind: ErrorKind::WrongArgumentCount,
+            })
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -167,7 +193,7 @@ impl Interpreter {
     }
 
     fn create_object(&self, tyidx: TypeIndex) -> Object {
-        let _ = self.get_type(tyidx);
+        let ty = self.get_type(tyidx);
 
         Object {
             members: HashMap::new(),
@@ -180,23 +206,16 @@ impl Interpreter {
         SObject::new(self.create_object(interpreter_consts::UNIT_TYPE_ID))
     }
 
+    fn get_method(&self, obj: &Object, name: &str) -> Option<Method> {
+        self.get_type(obj.type_).methods.get(name).map(Method::dup)
+    }
+
     fn call_method(&mut self, name: &str, args: &[SObject]) -> SObject {
         assert!(args.len() >= 1);
-        let code = {
-            let target = args.last().unwrap();
-            let method = self.get_type(target.obj().type_)
-                .methods
-                .get(name)
-                .expect("Called nonexistent method. TODO: runtime error");
-
-            if method.arity != args.len() - 1 {
-                panic!("Wrong number of arguments. TODO: runtime error");
-            }
-
-            Rc::clone(&method.code.0)
-        };
-
-        (code)(self, &args)
+        let target = args.last().unwrap();
+        let method = self.get_method(&target.obj(), name)
+            .expect("Called nonexistent method. TODO: runtime error");
+        method.call(self, &args).unwrap()
     }
 
     fn run_instruction(&mut self, insn: &Instruction) -> SObject {

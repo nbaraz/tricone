@@ -30,6 +30,9 @@ pub enum Instruction {
     GetMember {
         name: String,
     },
+    CallFunctionObject {
+        num_args: usize,
+    },
 }
 
 pub struct Code(Rc<Fn(&mut Interpreter, &[SObject]) -> SObject>);
@@ -160,6 +163,7 @@ pub(crate) mod interpreter_consts {
     pub const CORE_MODULE_ID: ::ModuleIndex = ::ModuleIndex(0);
     pub const SCOPE_TYPE_ID: ::TypeIndex = ::TypeIndex(CORE_MODULE_ID, 0);
     pub const UNIT_TYPE_ID: ::TypeIndex = ::TypeIndex(CORE_MODULE_ID, 1);
+    pub const FUNCTION_TYPE_ID: ::TypeIndex = ::TypeIndex(CORE_MODULE_ID, 2);
 
     pub const INIT_METHOD_NAME: &'static str = "create";
 }
@@ -191,6 +195,10 @@ impl Interpreter {
                 scope_stack: vec![],
             },
         };
+
+        let function_tyidx = function::register_func_type(&mut interpreter);
+        // The interpreter needs to know if an object is a function object easily
+        assert_eq!(function_tyidx, interpreter_consts::FUNCTION_TYPE_ID);
 
         int::register_int_type(&mut interpreter);
 
@@ -306,6 +314,28 @@ impl Interpreter {
                     .expect("Requested nonexistent member. TODO: runtime error")
                     .dup()
             }
+            CallFunctionObject { num_args } => {
+                if self.thread.operation_stack.len() < num_args {
+                    panic!("Not enough arguments passed! TODO: runtime error");
+                }
+
+                let op_stack_len = self.thread.operation_stack.len();
+                let args = self.thread
+                    .operation_stack
+                    .split_off(op_stack_len - num_args);
+
+                let function_obj = self.thread
+                    .operation_stack
+                    .pop()
+                    .expect("Need a function to call!");
+                let function_ref = function_obj.obj();
+
+                // Should be a runtime error
+                assert_eq!(function_ref.type_, interpreter_consts::FUNCTION_TYPE_ID);
+                let function = function::function_from_function_object(&function_ref);
+
+                function.call(self, &args).unwrap()
+            }
         }
     }
 
@@ -329,3 +359,4 @@ impl Interpreter {
 pub mod hello;
 mod int;
 mod generic;
+mod function;

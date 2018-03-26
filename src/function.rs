@@ -1,4 +1,5 @@
 use interpreter::*;
+use object::{Object, SObject};
 use generic;
 
 use std::rc::Rc;

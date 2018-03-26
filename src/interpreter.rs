@@ -1,7 +1,6 @@
 use std::collections::HashMap;
-use std::cell::{Ref, RefCell, RefMut};
-use std::rc::Rc;
 
+use object::{Object, SObject};
 use function::{self, Function};
 use int;
 
@@ -65,32 +64,6 @@ impl Type {
         self.methods
             .insert(name.to_owned(), Function::new(code, arity + 1));
     }
-}
-
-pub struct SObject(Rc<RefCell<Object>>);
-
-impl SObject {
-    fn new(obj: Object) -> SObject {
-        SObject(Rc::new(RefCell::new(obj)))
-    }
-
-    pub fn obj(&self) -> Ref<Object> {
-        self.0.borrow()
-    }
-
-    pub fn obj_mut(&self) -> RefMut<Object> {
-        self.0.borrow_mut()
-    }
-
-    pub fn dup(&self) -> SObject {
-        SObject(Rc::clone(&self.0))
-    }
-}
-
-pub struct Object {
-    pub members: HashMap<String, SObject>,
-    pub type_: TypeIndex,
-    pub data: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

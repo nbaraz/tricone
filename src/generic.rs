@@ -1,4 +1,5 @@
 use interpreter::*;
+use object::Object;
 
 use std::mem;
 use std::ops::Add;

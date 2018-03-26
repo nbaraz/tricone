@@ -34,7 +34,7 @@ impl Function {
     {
         Function {
             code: Code(Rc::new(code)),
-            arity: arity,
+            arity,
         }
     }
 
@@ -65,7 +65,7 @@ pub fn register_func_type(interpreter: &mut Interpreter) -> TypeIndex {
     interpreter.register_type(consts::CORE_MODULE_ID, func_ty)
 }
 
-pub fn function_from_function_object<'a>(obj: &'a Object) -> &'a Function {
+pub fn function_from_function_object(obj: &Object) -> &Function {
     if obj.type_ != consts::FUNCTION_TYPE_ID {
         panic!("Not a function object!");
     }

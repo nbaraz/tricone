@@ -102,7 +102,7 @@ pub struct Module {
 
 impl Module {
     fn lookup_type_mut(&mut self, name: &str) -> Option<&mut Type> {
-        self.types.iter_mut().filter(|ty| ty.name == name).next()
+        self.types.iter_mut().find(|ty| ty.name == name)
     }
 
     fn lookup_type_index(&self, name: &str) -> Option<usize> {
@@ -136,7 +136,7 @@ pub(crate) mod consts {
     pub const UNIT_TYPE_ID: TypeIndex = TypeIndex(CORE_MODULE_ID, 1);
     pub const FUNCTION_TYPE_ID: TypeIndex = TypeIndex(CORE_MODULE_ID, 2);
 
-    pub const INIT_METHOD_NAME: &'static str = "create";
+    pub const INIT_METHOD_NAME: &str = "create";
 }
 
 impl Interpreter {
@@ -168,11 +168,11 @@ impl Interpreter {
     }
 
     pub fn get_module(&self, idx: ModuleIndex) -> &Module {
-        return &self.modules[idx.0];
+        &self.modules[idx.0]
     }
 
     pub fn get_module_mut(&mut self, idx: ModuleIndex) -> &mut Module {
-        return &mut self.modules[idx.0];
+        &mut self.modules[idx.0]
     }
 
     pub fn lookup_type(&self, modidx: ModuleIndex, name: &str) -> Option<TypeIndex> {
@@ -220,7 +220,7 @@ impl Interpreter {
         let target = args.last().unwrap();
         let method = self.get_method(&target.obj(), name)
             .expect("Called nonexistent method. TODO: runtime error");
-        method.call(self, &args).unwrap()
+        method.call(self, args).unwrap()
     }
 
     pub fn create_scope(&mut self) -> Scope {
@@ -240,7 +240,7 @@ impl Interpreter {
             prev = Some(self.run_instruction(insn));
         }
         self.thread.scope_stack.pop();
-        prev.unwrap_or(self.get_unit_object())
+        prev.unwrap_or_else(|| self.get_unit_object())
     }
 
     pub fn run_instruction(&mut self, insn: &Instruction) -> SObject {

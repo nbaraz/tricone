@@ -8,25 +8,22 @@ use std::ptr;
 
 pub unsafe fn get_unsafe_copy<T: Copy>(obj: &Object) -> T {
     assert_eq!(obj.data.len(), mem::size_of::<T>());
-    let pointer: *const T = mem::transmute(obj.data.as_ptr());
-    *pointer
+    *(obj.data.as_ptr() as *const T)
 }
 
 pub unsafe fn get_unsafe_ref<'a, T>(obj: &'a Object) -> &'a T {
     assert_eq!(obj.data.len(), mem::size_of::<T>());
-    let val: &'a T = mem::transmute(obj.data.as_ptr());
-    val
+    &*(obj.data.as_ptr() as *const T)
 }
 
 pub unsafe fn get_unsafe_mut<'a, T>(obj: &'a mut Object) -> &'a mut T {
     assert_eq!(obj.data.len(), mem::size_of::<T>());
-    let val: &'a mut T = mem::transmute(obj.data.as_mut_ptr());
-    val
+    &mut *(obj.data.as_mut_ptr() as *mut T)
 }
 
 pub unsafe fn put_unsafe<T>(obj: &mut Object, val: T) {
     assert_eq!(obj.data.len(), mem::size_of::<T>());
-    let pointer: *mut T = mem::transmute(obj.data.as_mut_ptr());
+    let pointer = obj.data.as_mut_ptr() as *mut T;
     ptr::write(pointer, val);
 }
 

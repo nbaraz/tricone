@@ -1,10 +1,8 @@
-use ::*;
+use interpreter::*;
+use function;
 
 fn register_hello(interpreter: &mut Interpreter) -> TypeIndex {
-    let mut hello_ty = Type {
-        name: "Hello".to_owned(),
-        methods: HashMap::new(),
-    };
+    let mut hello_ty = Type::new("Hello");
 
     hello_ty.register_method("hello", 0, move |itrp, _args| {
                 println!("hello from method!!");
@@ -27,7 +25,7 @@ pub fn do_hello(interpreter: &mut Interpreter) {
         interpreter.lookup_type(interpreter_consts::CORE_MODULE_ID, "Hello"),
     );
 
-    use Instruction::*;
+    use interpreter::Instruction::*;
     let code = function::Code::create(
         vec![
             CreateObject { type_: hello_idx },

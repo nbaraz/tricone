@@ -1,4 +1,4 @@
-use ::*;
+use interpreter::*;
 
 use std::mem;
 use std::ops::Add;
@@ -31,10 +31,7 @@ pub unsafe fn put_unsafe<T>(obj: &mut Object, val: T) {
 }
 
 pub fn create_type_for<T>(interpreter: &mut Interpreter, name: &str) -> Type {
-    let mut ty = Type {
-        name: name.to_owned(),
-        methods: HashMap::new(),
-    };
+    let mut ty = Type::new(name);
 
     ty.register_method(
         interpreter_consts::INIT_METHOD_NAME,

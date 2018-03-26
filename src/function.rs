@@ -1,4 +1,7 @@
-use ::*;
+use interpreter::*;
+use generic;
+
+use std::rc::Rc;
 use std::ops::Deref;
 
 pub struct Code(Rc<Fn(&mut Interpreter, &[SObject]) -> SObject>);
@@ -6,17 +9,7 @@ pub struct Code(Rc<Fn(&mut Interpreter, &[SObject]) -> SObject>);
 impl Code {
     pub fn create(instructions: Vec<Instruction>) -> Code {
         Code(Rc::new(move |interpreter, _args| {
-            let mut prev = None;
-            let scope = interpreter.create_object(interpreter_consts::SCOPE_TYPE_ID);
-            interpreter.thread.scope_stack.push(Scope { vars: scope });
-            for insn in instructions.iter() {
-                if let Some(res) = prev {
-                    interpreter.thread.operation_stack.push(res)
-                }
-                prev = Some(interpreter.run_instruction(insn));
-            }
-            interpreter.thread.scope_stack.pop();
-            prev.unwrap_or(interpreter.get_unit_object())
+            interpreter.run_code(&instructions)
         }))
     }
 }

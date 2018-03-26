@@ -1,4 +1,5 @@
-use ::*;
+use interpreter::*;
+use generic;
 
 pub fn register_int_type(interpreter: &mut Interpreter) {
     let mut int_ty = generic::create_type_for::<i64>(interpreter, "Int");

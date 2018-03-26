@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::cell::{Ref, RefCell, RefMut};
 use std::rc::Rc;
 
-use function::{*, self};
+use function::{self, Function};
 use int;
 
 #[derive(Debug, Clone)]
@@ -128,8 +128,8 @@ pub struct Interpreter {
     thread: Thread,
 }
 
-pub(crate) mod interpreter_consts {
-    use interpreter::{TypeIndex, ModuleIndex};
+pub(crate) mod consts {
+    use interpreter::{ModuleIndex, TypeIndex};
     // modules depend on objects and vice-versa, need to bootstrap the core module
     pub const CORE_MODULE_ID: ModuleIndex = ModuleIndex(0);
     pub const SCOPE_TYPE_ID: TypeIndex = TypeIndex(CORE_MODULE_ID, 0);
@@ -144,13 +144,10 @@ impl Interpreter {
         let core_module = Module {
             globals: SObject::new(Object {
                 members: HashMap::new(),
-                type_: interpreter_consts::SCOPE_TYPE_ID,
+                type_: consts::SCOPE_TYPE_ID,
                 data: vec![],
             }),
-            types: vec![
-                Type::new("Scope"),
-                Type::new("Unit"),
-            ],
+            types: vec![Type::new("Scope"), Type::new("Unit")],
         };
 
         let mut interpreter = Interpreter {
@@ -161,9 +158,9 @@ impl Interpreter {
             },
         };
 
-        let function_tyidx = register_func_type(&mut interpreter);
+        let function_tyidx = function::register_func_type(&mut interpreter);
         // The interpreter needs to know if an object is a function object easily
-        assert_eq!(function_tyidx, interpreter_consts::FUNCTION_TYPE_ID);
+        assert_eq!(function_tyidx, consts::FUNCTION_TYPE_ID);
 
         int::register_int_type(&mut interpreter);
 
@@ -202,18 +199,16 @@ impl Interpreter {
             data: vec![],
         });
 
-        if let Some(method) = self.get_type(tyidx)
-            .get_method(interpreter_consts::INIT_METHOD_NAME)
-        {
+        if let Some(method) = self.get_type(tyidx).get_method(consts::INIT_METHOD_NAME) {
             let res = method.call(self, &[obj.dup()]).unwrap();
-            assert_eq!(interpreter_consts::UNIT_TYPE_ID, res.obj().type_);
+            assert_eq!(consts::UNIT_TYPE_ID, res.obj().type_);
         }
 
         obj
     }
 
     pub fn get_unit_object(&mut self) -> SObject {
-        self.create_object(interpreter_consts::UNIT_TYPE_ID)
+        self.create_object(consts::UNIT_TYPE_ID)
     }
 
     fn get_method(&self, obj: &Object, name: &str) -> Option<Function> {
@@ -229,21 +224,23 @@ impl Interpreter {
     }
 
     pub fn create_scope(&mut self) -> Scope {
-        Scope { vars: self.create_object(interpreter_consts::SCOPE_TYPE_ID) }
+        Scope {
+            vars: self.create_object(consts::SCOPE_TYPE_ID),
+        }
     }
 
     pub fn run_code(&mut self, instructions: &[Instruction]) -> SObject {
-            let mut prev = None;
-            let scope = self.create_object(interpreter_consts::SCOPE_TYPE_ID);
-            self.thread.scope_stack.push(Scope { vars: scope });
-            for insn in instructions.iter() {
-                if let Some(res) = prev {
-                    self.thread.operation_stack.push(res)
-                }
-                prev = Some(self.run_instruction(insn));
+        let mut prev = None;
+        let scope = self.create_object(consts::SCOPE_TYPE_ID);
+        self.thread.scope_stack.push(Scope { vars: scope });
+        for insn in instructions.iter() {
+            if let Some(res) = prev {
+                self.thread.operation_stack.push(res)
             }
-            self.thread.scope_stack.pop();
-            prev.unwrap_or(self.get_unit_object())
+            prev = Some(self.run_instruction(insn));
+        }
+        self.thread.scope_stack.pop();
+        prev.unwrap_or(self.get_unit_object())
     }
 
     pub fn run_instruction(&mut self, insn: &Instruction) -> SObject {
@@ -314,12 +311,11 @@ impl Interpreter {
                 let function_ref = function_obj.obj();
 
                 // Should be a runtime error
-                assert_eq!(function_ref.type_, interpreter_consts::FUNCTION_TYPE_ID);
+                assert_eq!(function_ref.type_, consts::FUNCTION_TYPE_ID);
                 let function = function::function_from_function_object(&function_ref);
 
                 function.call(self, &args).unwrap()
             }
         }
     }
-
 }

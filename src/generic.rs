@@ -30,18 +30,14 @@ pub unsafe fn put_unsafe<T>(obj: &mut Object, val: T) {
     ptr::write(pointer, val);
 }
 
-pub fn create_type_for<T>(interpreter: &mut Interpreter, name: &str) -> Type {
+pub fn create_type_for<T>(name: &str) -> Type {
     let mut ty = Type::new(name);
 
-    ty.register_method(
-        interpreter_consts::INIT_METHOD_NAME,
-        0,
-        move |itrp, args| {
-            let mut target = args[0].obj_mut();
-            target.data.resize(mem::size_of::<T>(), 0);
-            itrp.get_unit_object()
-        },
-    );
+    ty.register_method(consts::INIT_METHOD_NAME, 0, move |itrp, args| {
+        let mut target = args[0].obj_mut();
+        target.data.resize(mem::size_of::<T>(), 0);
+        itrp.get_unit_object()
+    });
 
     ty
 }

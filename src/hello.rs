@@ -5,35 +5,32 @@ fn register_hello(interpreter: &mut Interpreter) -> TypeIndex {
     let mut hello_ty = Type::new("Hello");
 
     hello_ty.register_method("hello", 0, move |itrp, _args| {
-                println!("hello from method!!");
-                itrp.get_unit_object()
-            });
+        println!("hello from method!!");
+        itrp.get_unit_object()
+    });
 
-    hello_ty.register_method(interpreter_consts::INIT_METHOD_NAME, 0, move |itrp, _args| {
-                println!("hello from INIT method!!");
-                itrp.get_unit_object()
-            });
+    hello_ty.register_method(consts::INIT_METHOD_NAME, 0, move |itrp, _args| {
+        println!("hello from INIT method!!");
+        itrp.get_unit_object()
+    });
 
-    interpreter.register_type(interpreter_consts::CORE_MODULE_ID, hello_ty)
+    interpreter.register_type(consts::CORE_MODULE_ID, hello_ty)
 }
-
 
 pub fn do_hello(interpreter: &mut Interpreter) {
     let hello_idx = register_hello(interpreter);
     assert_eq!(
         Some(hello_idx),
-        interpreter.lookup_type(interpreter_consts::CORE_MODULE_ID, "Hello"),
+        interpreter.lookup_type(consts::CORE_MODULE_ID, "Hello"),
     );
 
     use interpreter::Instruction::*;
-    let code = function::Code::create(
-        vec![
-            CreateObject { type_: hello_idx },
-            CallMethod {
-                name: "hello".to_owned(),
-                num_args: 0,
-            },
-        ],
-    );
+    let code = function::Code::create(vec![
+        CreateObject { type_: hello_idx },
+        CallMethod {
+            name: "hello".to_owned(),
+            num_args: 0,
+        },
+    ]);
     (code)(interpreter, &[]);
 }

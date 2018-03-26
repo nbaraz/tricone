@@ -28,8 +28,7 @@ pub fn do_hello(interpreter: &mut Interpreter) {
     );
 
     use Instruction::*;
-    let code = Interpreter::create_code(
-        interpreter,
+    let code = function::Code::create(
         vec![
             CreateObject { type_: hello_idx },
             CallMethod {
@@ -38,5 +37,5 @@ pub fn do_hello(interpreter: &mut Interpreter) {
             },
         ],
     );
-    (code.0)(interpreter, &[]);
+    (code)(interpreter, &[]);
 }

@@ -1,15 +1,21 @@
 use std::collections::HashMap;
 use std::cell::{Ref, RefCell, RefMut};
 use std::rc::Rc;
+use function::*;
+
+pub mod hello;
+mod int;
+mod generic;
+mod function;
 
 #[derive(Debug, Clone)]
-enum ErrorKind {
+pub enum ErrorKind {
     IndexError,
     WrongArgumentCount,
 }
 
 #[derive(Debug, Clone)]
-struct TriconeError {
+pub struct TriconeError {
     kind: ErrorKind,
 }
 
@@ -33,46 +39,6 @@ pub enum Instruction {
     CallFunctionObject {
         num_args: usize,
     },
-}
-
-pub struct Code(Rc<Fn(&mut Interpreter, &[SObject]) -> SObject>);
-
-pub struct Function {
-    code: Code,
-    arity: usize,
-}
-
-impl Function {
-    fn new<F>(code: F, arity: usize) -> Function
-    where
-        F: Fn(&mut Interpreter, &[SObject]) -> SObject + 'static,
-    {
-        Function {
-            code: Code(Rc::new(code)),
-            arity: arity,
-        }
-    }
-
-    fn dup(&self) -> Function {
-        Function {
-            code: Code(Rc::clone(&self.code.0)),
-            arity: self.arity,
-        }
-    }
-
-    fn call(
-        &self,
-        interpreter: &mut Interpreter,
-        args: &[SObject],
-    ) -> Result<SObject, TriconeError> {
-        if self.arity == args.len() {
-            Ok((self.code.0)(interpreter, args))
-        } else {
-            Err(TriconeError {
-                kind: ErrorKind::WrongArgumentCount,
-            })
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -339,24 +305,4 @@ impl Interpreter {
         }
     }
 
-    fn create_code(&self, instructions: Vec<Instruction>) -> Code {
-        Code(Rc::new(move |interpreter, _args| {
-            let mut prev = None;
-            let scope = interpreter.create_object(interpreter_consts::SCOPE_TYPE_ID);
-            interpreter.thread.scope_stack.push(Scope { vars: scope });
-            for insn in instructions.iter() {
-                if let Some(res) = prev {
-                    interpreter.thread.operation_stack.push(res)
-                }
-                prev = Some(interpreter.run_instruction(insn));
-            }
-            interpreter.thread.scope_stack.pop();
-            prev.unwrap_or(interpreter.get_unit_object())
-        }))
-    }
 }
-
-pub mod hello;
-mod int;
-mod generic;
-mod function;

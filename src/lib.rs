@@ -1,5 +1,6 @@
+extern crate arrayvec;
+
 pub mod interpreter;
-pub mod object;
 pub mod function;
 pub mod generic;
 pub mod int;

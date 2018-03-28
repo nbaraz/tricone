@@ -9,7 +9,7 @@ fn register_hello(interpreter: &mut Interpreter) -> TypeIndex {
         itrp.get_unit_object()
     });
 
-    hello_ty.register_method(consts::INIT_METHOD_NAME, 0, move |itrp, _args| {
+    hello_ty.register_method(consts::CREATE_METHOD_NAME, 0, move |itrp, _args| {
         println!("hello from INIT method!!");
         itrp.get_unit_object()
     });
@@ -32,5 +32,6 @@ pub fn do_hello(interpreter: &mut Interpreter) {
             num_args: 0,
         },
     ]);
-    (code)(interpreter, &[]);
+    let obj = (code)(interpreter, &[]);
+    interpreter.drop_token(obj);
 }

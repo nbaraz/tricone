@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["Noam Baraz <n0987b@gmail.com>"]
 
 [dependencies]
+arrayvec = "0.4.7"
 
 [[bin]]
 name = "tricone"

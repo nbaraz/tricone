@@ -1,11 +1,10 @@
 use interpreter::*;
-use object::{Object, SObject};
 use generic;
 
 use std::rc::Rc;
 use std::ops::Deref;
 
-pub struct Code(Rc<Fn(&mut Interpreter, &[SObject]) -> SObject>);
+pub struct Code(Rc<Fn(&mut Interpreter, &[ObjectToken]) -> ObjectToken>);
 
 impl Code {
     pub fn create(instructions: Vec<Instruction>) -> Code {
@@ -16,7 +15,7 @@ impl Code {
 }
 
 impl Deref for Code {
-    type Target = Rc<Fn(&mut Interpreter, &[SObject]) -> SObject>;
+    type Target = Rc<Fn(&mut Interpreter, &[ObjectToken]) -> ObjectToken>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -31,7 +30,7 @@ pub struct Function {
 impl Function {
     pub fn new<F>(code: F, arity: usize) -> Function
     where
-        F: Fn(&mut Interpreter, &[SObject]) -> SObject + 'static,
+        F: Fn(&mut Interpreter, &[ObjectToken]) -> ObjectToken + 'static,
     {
         Function {
             code: Code(Rc::new(code)),
@@ -49,8 +48,8 @@ impl Function {
     pub fn call(
         &self,
         interpreter: &mut Interpreter,
-        args: &[SObject],
-    ) -> Result<SObject, TriconeError> {
+        args: &[ObjectToken],
+    ) -> Result<ObjectToken, TriconeError> {
         if self.arity == args.len() {
             Ok((self.code.0)(interpreter, args))
         } else {

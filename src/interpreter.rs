@@ -1,6 +1,9 @@
 use std::collections::HashMap;
+use std::cell::{Ref, RefCell, RefMut};
+use std::rc::Rc;
+use std::mem;
+use arrayvec::ArrayVec;
 
-use object::{Object, SObject};
 use function::{self, Function};
 use int;
 
@@ -59,7 +62,7 @@ impl Type {
 
     pub fn register_method<F>(&mut self, name: &str, arity: usize, code: F)
     where
-        F: Fn(&mut Interpreter, &[SObject]) -> SObject + 'static,
+        F: Fn(&mut Interpreter, &[ObjectToken]) -> ObjectToken + 'static,
     {
         self.methods
             .insert(name.to_owned(), Function::new(code, arity + 1));
@@ -69,7 +72,6 @@ impl Type {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ModuleIndex(pub usize);
 pub struct Module {
-    globals: SObject,
     types: Vec<Type>,
 }
 
@@ -88,17 +90,55 @@ impl Module {
 }
 
 pub struct Scope {
-    vars: SObject,
+    vars: ObjectToken,
 }
 
 pub struct Thread {
-    operation_stack: Vec<SObject>,
+    operation_stack: Vec<ObjectToken>,
     scope_stack: Vec<Scope>,
 }
 
-pub struct Interpreter {
-    modules: Vec<Module>,
-    thread: Thread,
+#[derive(Debug)]
+pub struct ObjectToken(Rc<RefCell<Object>>);
+
+impl ObjectToken {
+    pub fn new(obj: Object) -> ObjectToken {
+        ObjectToken(Rc::new(RefCell::new(obj)))
+    }
+
+    pub fn obj(&self) -> Ref<Object> {
+        self.0.borrow()
+    }
+
+    pub fn obj_mut(&self) -> RefMut<Object> {
+        self.0.borrow_mut()
+    }
+
+    pub fn dup(&self) -> ObjectToken {
+        ObjectToken(Rc::clone(&self.0))
+    }
+
+    fn into_rc(mut self) -> Rc<RefCell<Object>> {
+        unsafe {
+            let rc = mem::replace(&mut self.0, mem::uninitialized());
+            mem::forget(self);
+            rc
+        }
+    }
+}
+
+impl Drop for ObjectToken {
+    fn drop(&mut self) {
+        // TODO: abort
+        panic!("Pass object tokens to the interpreter to destroy them");
+    }
+}
+
+#[derive(Debug)]
+pub struct Object {
+    pub members: HashMap<String, ObjectToken>,
+    pub type_: TypeIndex,
+    pub data: Vec<u8>,
 }
 
 pub(crate) mod consts {
@@ -109,17 +149,18 @@ pub(crate) mod consts {
     pub const UNIT_TYPE_ID: TypeIndex = TypeIndex(CORE_MODULE_ID, 1);
     pub const FUNCTION_TYPE_ID: TypeIndex = TypeIndex(CORE_MODULE_ID, 2);
 
-    pub const INIT_METHOD_NAME: &str = "create";
+    pub const CREATE_METHOD_NAME: &str = "create";
+    pub const DROP_METHOD_NAME: &str = "drop";
+}
+
+pub struct Interpreter {
+    modules: Vec<Module>,
+    thread: Thread,
 }
 
 impl Interpreter {
     pub fn new() -> Interpreter {
         let core_module = Module {
-            globals: SObject::new(Object {
-                members: HashMap::new(),
-                type_: consts::SCOPE_TYPE_ID,
-                data: vec![],
-            }),
             types: vec![Type::new("Scope"), Type::new("Unit")],
         };
 
@@ -165,22 +206,32 @@ impl Interpreter {
         TypeIndex(modidx, module.types.len() - 1)
     }
 
-    pub fn create_object(&mut self, tyidx: TypeIndex) -> SObject {
-        let obj = SObject::new(Object {
+    pub fn create_object(&mut self, tyidx: TypeIndex) -> ObjectToken {
+        let obj = ObjectToken::new(Object {
             members: HashMap::new(),
             type_: tyidx,
             data: vec![],
         });
 
-        if let Some(method) = self.get_type(tyidx).get_method(consts::INIT_METHOD_NAME) {
-            let res = method.call(self, &[obj.dup()]).unwrap();
-            assert_eq!(consts::UNIT_TYPE_ID, res.obj().type_);
-        }
-
+        self.maybe_call_no_args_no_ret_method(&obj, consts::CREATE_METHOD_NAME);
         obj
     }
 
-    pub fn get_unit_object(&mut self) -> SObject {
+    fn maybe_call_no_args_no_ret_method(&mut self, token: &ObjectToken, name: &str) {
+        let tyidx = token.obj().type_;
+
+        if let Some(method) = self.get_type(tyidx).get_method(name) {
+            let args = ArrayVec::from([token.dup()]);
+            let res = method.call(self, &args).unwrap();
+            assert_eq!(consts::UNIT_TYPE_ID, res.obj().type_);
+            for arg in args.into_iter() {
+                self.drop_token(arg);
+            }
+            self.drop_token(res);
+        }
+    }
+
+    pub fn get_unit_object(&mut self) -> ObjectToken {
         self.create_object(consts::UNIT_TYPE_ID)
     }
 
@@ -188,7 +239,7 @@ impl Interpreter {
         self.get_type(obj.type_).get_method(name)
     }
 
-    fn call_method(&mut self, name: &str, args: &[SObject]) -> SObject {
+    fn call_method(&mut self, name: &str, args: &[ObjectToken]) -> ObjectToken {
         assert!(args.len() >= 1);
         let target = args.last().unwrap();
         let method = self.get_method(&target.obj(), name)
@@ -202,7 +253,7 @@ impl Interpreter {
         }
     }
 
-    pub fn run_code(&mut self, instructions: &[Instruction]) -> SObject {
+    pub fn run_code(&mut self, instructions: &[Instruction]) -> ObjectToken {
         let mut prev = None;
         let scope = self.create_object(consts::SCOPE_TYPE_ID);
         self.thread.scope_stack.push(Scope { vars: scope });
@@ -212,11 +263,28 @@ impl Interpreter {
             }
             prev = Some(self.run_instruction(insn));
         }
-        self.thread.scope_stack.pop();
+        let scope = self.thread.scope_stack.pop().unwrap();
+        self.drop_token(scope.vars);
         prev.unwrap_or_else(|| self.get_unit_object())
     }
 
-    pub fn run_instruction(&mut self, insn: &Instruction) -> SObject {
+    pub fn drop_token(&mut self, token: ObjectToken) {
+        if Rc::strong_count(&token.0) == 1 {
+            self.maybe_call_no_args_no_ret_method(&token, consts::DROP_METHOD_NAME);
+            assert_eq!(Rc::strong_count(&token.0), 1);
+
+            let mut object = Rc::try_unwrap(token.into_rc()).unwrap().into_inner();
+
+            for (_, obj) in object.members.drain() {
+                self.drop_token(obj);
+            }
+        } else {
+            // will drop normally
+            token.into_rc();
+        }
+    }
+
+    pub fn run_instruction(&mut self, insn: &Instruction) -> ObjectToken {
         use self::Instruction::*;
         match *insn {
             CreateObject { type_ } => self.create_object(type_),
@@ -253,19 +321,27 @@ impl Interpreter {
                     .operation_stack
                     .split_off(op_stack_len - num_args);
 
-                self.call_method(name, &args)
+                let res = self.call_method(name, &args);
+                for arg in args {
+                    self.drop_token(arg);
+                }
+                res
             }
             GetMember { ref name } => {
                 let item = self.thread
                     .operation_stack
                     .pop()
                     .expect("Stack needs 1 item, was empty");
-                let temp_obj = &item.obj();
-                temp_obj
-                    .members
-                    .get(name)
-                    .expect("Requested nonexistent member. TODO: runtime error")
-                    .dup()
+                let res = {
+                    let temp_obj = &item.obj();
+                    temp_obj
+                        .members
+                        .get(name)
+                        .expect("Requested nonexistent member. TODO: runtime error")
+                        .dup()
+                };
+                self.drop_token(item);
+                res
             }
             CallFunctionObject { num_args } => {
                 if self.thread.operation_stack.len() < num_args {
@@ -287,7 +363,11 @@ impl Interpreter {
                 assert_eq!(function_ref.type_, consts::FUNCTION_TYPE_ID);
                 let function = function::function_from_function_object(&function_ref);
 
-                function.call(self, &args).unwrap()
+                let res = function.call(self, &args).unwrap();
+                for arg in args {
+                    self.drop_token(arg);
+                }
+                res
             }
         }
     }

@@ -1,5 +1,4 @@
 use interpreter::*;
-use object::Object;
 
 use std::mem;
 use std::ops::Add;
@@ -31,7 +30,7 @@ pub unsafe fn put_unsafe<T>(obj: &mut Object, val: T) {
 pub fn create_type_for<T>(name: &str) -> Type {
     let mut ty = Type::new(name);
 
-    ty.register_method(consts::INIT_METHOD_NAME, 0, move |itrp, args| {
+    ty.register_method(consts::CREATE_METHOD_NAME, 0, move |itrp, args| {
         let mut target = args[0].obj_mut();
         target.data.resize(mem::size_of::<T>(), 0);
         itrp.get_unit_object()

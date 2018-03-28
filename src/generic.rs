@@ -36,6 +36,15 @@ pub fn create_type_for<T>(name: &str) -> Type {
         itrp.get_unit_object()
     });
 
+    // TODO: can currently drop uninitialized values - fix
+    ty.register_method(consts::DROP_METHOD_NAME, 0, move |itrp, args| {
+        let mut target = args[0].obj_mut();
+        unsafe {
+            ptr::drop_in_place(target.data.as_mut_ptr() as *mut T);
+        }
+        itrp.get_unit_object()
+    });
+
     ty
 }
 

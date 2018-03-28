@@ -10,7 +10,12 @@ fn register_hello(interpreter: &mut Interpreter) -> TypeIndex {
     });
 
     hello_ty.register_method(consts::CREATE_METHOD_NAME, 0, move |itrp, _args| {
-        println!("hello from INIT method!!");
+        println!("hello from CREATE method!!");
+        itrp.get_unit_object()
+    });
+
+    hello_ty.register_method(consts::DROP_METHOD_NAME, 0, move |itrp, _args| {
+        println!("hello from DROP method!!");
         itrp.get_unit_object()
     });
 

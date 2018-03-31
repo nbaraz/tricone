@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::cell::{Ref, RefCell, RefMut};
 use std::rc::Rc;
 use std::mem;
+use std::process::abort;
 use arrayvec::ArrayVec;
 
 use function::{self, Function};
@@ -130,7 +131,8 @@ impl ObjectToken {
 impl Drop for ObjectToken {
     fn drop(&mut self) {
         // TODO: abort
-        panic!("Pass object tokens to the interpreter to destroy them");
+        println!("Pass object tokens to the interpreter to destroy them");
+        abort();
     }
 }
 

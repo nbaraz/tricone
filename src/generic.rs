@@ -11,12 +11,12 @@ pub unsafe fn get_unsafe_copy<T: Copy>(obj: &Object) -> T {
     *(obj.data.as_ptr() as *const T)
 }
 
-pub unsafe fn get_unsafe_ref<'a, T>(obj: &'a Object) -> &'a T {
+pub unsafe fn get_unsafe_ref<T>(obj: &Object) -> &T {
     assert_eq!(obj.data.len(), mem::size_of::<T>());
     &*(obj.data.as_ptr() as *const T)
 }
 
-pub unsafe fn get_unsafe_mut<'a, T>(obj: &'a mut Object) -> &'a mut T {
+pub unsafe fn get_unsafe_mut<T>(obj: &mut Object) -> &mut T {
     assert_eq!(obj.data.len(), mem::size_of::<T>());
     &mut *(obj.data.as_mut_ptr() as *mut T)
 }

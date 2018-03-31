@@ -84,6 +84,7 @@ pub struct Module {
 }
 
 impl Module {
+    #[allow(unused)]
     fn lookup_type_mut(&mut self, name: &str) -> Option<&mut Type> {
         self.types.iter_mut().find(|ty| ty.name == name)
     }
@@ -233,7 +234,7 @@ impl Interpreter {
         if let Some(method) = self.get_type(tyidx).get_method(name) {
             let args = ArrayVec::from([token.dup()]);
             let res = method.call(self, &args).unwrap();
-            for arg in args.into_iter() {
+            for arg in args {
                 self.drop_token(arg);
             }
             if let Some(obj) = res {
@@ -407,5 +408,11 @@ impl Interpreter {
                 None
             }
         }
+    }
+}
+
+impl Default for Interpreter {
+    fn default() -> Self {
+        Interpreter::new()
     }
 }

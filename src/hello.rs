@@ -4,19 +4,19 @@ use function;
 fn register_hello(interpreter: &mut Interpreter) -> TypeIndex {
     let mut hello_ty = Type::new("Hello");
 
-    hello_ty.register_method("hello", 0, move |itrp, _args| {
+    hello_ty.register_method("hello", 0, move |_itrp, _args| {
         println!("hello from method!!");
-        itrp.get_unit_object()
+        None
     });
 
-    hello_ty.register_method(consts::CREATE_METHOD_NAME, 0, move |itrp, _args| {
+    hello_ty.register_method(consts::CREATE_METHOD_NAME, 0, move |_itrp, _args| {
         println!("hello from CREATE method!!");
-        itrp.get_unit_object()
+        None
     });
 
-    hello_ty.register_method(consts::DROP_METHOD_NAME, 0, move |itrp, _args| {
+    hello_ty.register_method(consts::DROP_METHOD_NAME, 0, move |_itrp, _args| {
         println!("hello from DROP method!!");
-        itrp.get_unit_object()
+        None
     });
 
     interpreter.register_type(consts::CORE_MODULE_ID, hello_ty)
@@ -35,18 +35,18 @@ pub fn do_hello(interpreter: &mut Interpreter) {
         CallMethod {
             name: "hello".to_owned(),
             num_args: 0,
+            use_result: false,
         },
-        Pop,
         CreateString {
             value: "Hello world!".to_owned(),
         },
         CallMethod {
             name: "println".to_owned(),
             num_args: 0,
+            use_result: false,
         },
-        Pop,
         Diag,
     ]);
     let obj = (code)(interpreter, &[]);
-    interpreter.drop_token(obj);
+    assert!(obj.is_none());
 }

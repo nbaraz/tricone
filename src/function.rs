@@ -4,7 +4,7 @@ use generic;
 use std::rc::Rc;
 use std::ops::Deref;
 
-pub struct Code(Rc<Fn(&mut Interpreter, &[ObjectToken]) -> ObjectToken>);
+pub struct Code(Rc<Fn(&mut Interpreter, &[ObjectToken]) -> Option<ObjectToken>>);
 
 impl Code {
     pub fn create(instructions: Vec<Instruction>) -> Code {
@@ -15,7 +15,7 @@ impl Code {
 }
 
 impl Deref for Code {
-    type Target = Rc<Fn(&mut Interpreter, &[ObjectToken]) -> ObjectToken>;
+    type Target = Rc<Fn(&mut Interpreter, &[ObjectToken]) -> Option<ObjectToken>>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -30,7 +30,7 @@ pub struct Function {
 impl Function {
     pub fn new<F>(code: F, arity: usize) -> Function
     where
-        F: Fn(&mut Interpreter, &[ObjectToken]) -> ObjectToken + 'static,
+        F: Fn(&mut Interpreter, &[ObjectToken]) -> Option<ObjectToken> + 'static,
     {
         Function {
             code: Code(Rc::new(code)),
@@ -49,7 +49,7 @@ impl Function {
         &self,
         interpreter: &mut Interpreter,
         args: &[ObjectToken],
-    ) -> Result<ObjectToken, TriconeError> {
+    ) -> Result<Option<ObjectToken>, TriconeError> {
         if self.arity == args.len() {
             Ok((self.code.0)(interpreter, args))
         } else {

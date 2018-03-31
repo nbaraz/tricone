@@ -4,10 +4,10 @@ use interpreter::*;
 pub fn register_string_type(interpreter: &mut Interpreter) {
     let mut string_ty = generic::create_type_for::<String>("String");
 
-    string_ty.register_method("println", 0, move |itrp, args| {
+    string_ty.register_method("println", 0, move |_itrp, args| {
         let target = args[0].obj();
         println!("{}", unsafe { generic::get_unsafe_ref::<String>(&target) });
-        itrp.get_unit_object()
+        None
     });
 
     interpreter.register_type(consts::CORE_MODULE_ID, string_ty);

@@ -33,17 +33,18 @@ pub enum Instruction {
     CallMethod {
         name: String,
         num_args: usize,
+        use_result: bool,
     },
     GetMember {
         name: String,
     },
     CallFunctionObject {
         num_args: usize,
+        use_result: bool,
     },
     CreateString {
         value: String,
     },
-    Pop,
     Diag,
 }
 
@@ -69,7 +70,7 @@ impl Type {
 
     pub fn register_method<F>(&mut self, name: &str, arity: usize, code: F)
     where
-        F: Fn(&mut Interpreter, &[ObjectToken]) -> ObjectToken + 'static,
+        F: Fn(&mut Interpreter, &[ObjectToken]) -> Option<ObjectToken> + 'static,
     {
         self.methods
             .insert(name.to_owned(), Function::new(code, arity + 1));
@@ -232,11 +233,13 @@ impl Interpreter {
         if let Some(method) = self.get_type(tyidx).get_method(name) {
             let args = ArrayVec::from([token.dup()]);
             let res = method.call(self, &args).unwrap();
-            assert_eq!(consts::UNIT_TYPE_ID, res.obj().type_);
             for arg in args.into_iter() {
                 self.drop_token(arg);
             }
-            self.drop_token(res);
+            if let Some(obj) = res {
+                assert_eq!(consts::UNIT_TYPE_ID, obj.obj().type_);
+                self.drop_token(obj);
+            }
         }
     }
 
@@ -248,7 +251,7 @@ impl Interpreter {
         self.get_type(obj.type_).get_method(name)
     }
 
-    fn call_method(&mut self, name: &str, args: &[ObjectToken]) -> ObjectToken {
+    fn call_method(&mut self, name: &str, args: &[ObjectToken]) -> Option<ObjectToken> {
         assert!(args.len() >= 1);
         let target = args.last().unwrap();
         let method = self.get_method(&target.obj(), name)
@@ -262,7 +265,7 @@ impl Interpreter {
         }
     }
 
-    pub fn run_code(&mut self, instructions: &[Instruction]) -> ObjectToken {
+    pub fn run_code(&mut self, instructions: &[Instruction]) -> Option<ObjectToken> {
         let mut prev = None;
         let scope = self.create_object(consts::SCOPE_TYPE_ID);
         self.thread.scope_stack.push(Scope { vars: scope });
@@ -274,7 +277,7 @@ impl Interpreter {
         }
         let scope = self.thread.scope_stack.pop().unwrap();
         self.drop_token(scope.vars);
-        prev.unwrap_or_else(|| self.get_unit_object())
+        prev
     }
 
     pub fn drop_token(&mut self, token: ObjectToken) {
@@ -320,6 +323,7 @@ impl Interpreter {
             CallMethod {
                 ref name,
                 mut num_args,
+                use_result,
             } => {
                 num_args += 1;
 
@@ -336,7 +340,14 @@ impl Interpreter {
                 for arg in args {
                     self.drop_token(arg);
                 }
-                Some(res)
+                if use_result {
+                    Some(res.unwrap_or_else(|| self.get_unit_object()))
+                } else {
+                    if let Some(obj) = res {
+                        self.drop_token(obj);
+                    }
+                    None
+                }
             }
             GetMember { ref name } => {
                 let item = self.thread
@@ -354,7 +365,10 @@ impl Interpreter {
                 self.drop_token(item);
                 Some(res)
             }
-            CallFunctionObject { num_args } => {
+            CallFunctionObject {
+                num_args,
+                use_result,
+            } => {
                 if self.thread.operation_stack.len() < num_args {
                     panic!("Not enough arguments passed! TODO: runtime error");
                 }
@@ -378,16 +392,16 @@ impl Interpreter {
                 for arg in args {
                     self.drop_token(arg);
                 }
-                Some(res)
+                if use_result {
+                    Some(res.unwrap_or_else(|| self.get_unit_object()))
+                } else {
+                    if let Some(obj) = res {
+                        self.drop_token(obj);
+                    }
+                    None
+                }
             }
             CreateString { ref value } => Some(string::create_string(self, value.clone())),
-            Pop => {
-                let opt = self.thread.operation_stack.pop();
-                if let Some(obj) = opt {
-                    self.drop_token(obj);
-                }
-                None
-            }
             Diag => {
                 println!("{:?}", self.thread.operation_stack);
                 None

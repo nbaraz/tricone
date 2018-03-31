@@ -30,19 +30,19 @@ pub unsafe fn put_unsafe<T>(obj: &mut Object, val: T) {
 pub fn create_type_for<T>(name: &str) -> Type {
     let mut ty = Type::new(name);
 
-    ty.register_method(consts::CREATE_METHOD_NAME, 0, move |itrp, args| {
+    ty.register_method(consts::CREATE_METHOD_NAME, 0, move |_itrp, args| {
         let mut target = args[0].obj_mut();
         target.data.resize(mem::size_of::<T>(), 0);
-        itrp.get_unit_object()
+        None
     });
 
     // TODO: can currently drop uninitialized values - fix
-    ty.register_method(consts::DROP_METHOD_NAME, 0, move |itrp, args| {
+    ty.register_method(consts::DROP_METHOD_NAME, 0, move |_itrp, args| {
         let mut target = args[0].obj_mut();
         unsafe {
             ptr::drop_in_place(target.data.as_mut_ptr() as *mut T);
         }
-        itrp.get_unit_object()
+        None
     });
 
     ty
@@ -62,6 +62,6 @@ pub fn impl_add_for<T: Add + Clone>(ty: &mut Type) {
             put_unsafe(&mut res_, Add::add(val_a.clone(), val_b.clone()));
         }
 
-        res_obj
+        Some(res_obj)
     });
 }

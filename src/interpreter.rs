@@ -263,7 +263,7 @@ impl Interpreter {
             if let Some(res) = prev {
                 self.thread.operation_stack.push(res)
             }
-            prev = Some(self.run_instruction(insn));
+            prev = self.run_instruction(insn);
         }
         let scope = self.thread.scope_stack.pop().unwrap();
         self.drop_token(scope.vars);
@@ -286,10 +286,10 @@ impl Interpreter {
         }
     }
 
-    pub fn run_instruction(&mut self, insn: &Instruction) -> ObjectToken {
+    pub fn run_instruction(&mut self, insn: &Instruction) -> Option<ObjectToken> {
         use self::Instruction::*;
         match *insn {
-            CreateObject { type_ } => self.create_object(type_),
+            CreateObject { type_ } => Some(self.create_object(type_)),
             Assign { ref name } => {
                 let mut scope = self.thread
                     .operation_stack
@@ -300,14 +300,16 @@ impl Interpreter {
                     .pop()
                     .expect("Stack needs 2 items, only 1 found");
                 scope.obj_mut().members.insert(name.clone(), item);
-                self.get_unit_object()
+                None
             }
-            GetTopScope => self.thread
-                .scope_stack
-                .last()
-                .expect("Must have at least one scope")
-                .vars
-                .dup(),
+            GetTopScope => Some(
+                self.thread
+                    .scope_stack
+                    .last()
+                    .expect("Must have at least one scope")
+                    .vars
+                    .dup(),
+            ),
             CallMethod {
                 ref name,
                 mut num_args,
@@ -327,7 +329,7 @@ impl Interpreter {
                 for arg in args {
                     self.drop_token(arg);
                 }
-                res
+                Some(res)
             }
             GetMember { ref name } => {
                 let item = self.thread
@@ -343,7 +345,7 @@ impl Interpreter {
                         .dup()
                 };
                 self.drop_token(item);
-                res
+                Some(res)
             }
             CallFunctionObject { num_args } => {
                 if self.thread.operation_stack.len() < num_args {
@@ -369,7 +371,7 @@ impl Interpreter {
                 for arg in args {
                     self.drop_token(arg);
                 }
-                res
+                Some(res)
             }
         }
     }

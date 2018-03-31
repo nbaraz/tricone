@@ -43,6 +43,8 @@ pub enum Instruction {
     CreateString {
         value: String,
     },
+    Pop,
+    Diag,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -379,6 +381,17 @@ impl Interpreter {
                 Some(res)
             }
             CreateString { ref value } => Some(string::create_string(self, value.clone())),
+            Pop => {
+                let opt = self.thread.operation_stack.pop();
+                if let Some(obj) = opt {
+                    self.drop_token(obj);
+                }
+                None
+            }
+            Diag => {
+                println!("{:?}", self.thread.operation_stack);
+                None
+            }
         }
     }
 }

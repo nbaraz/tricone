@@ -36,6 +36,16 @@ pub fn do_hello(interpreter: &mut Interpreter) {
             name: "hello".to_owned(),
             num_args: 0,
         },
+        Pop,
+        CreateString {
+            value: "Hello world!".to_owned(),
+        },
+        CallMethod {
+            name: "println".to_owned(),
+            num_args: 0,
+        },
+        Pop,
+        Diag,
     ]);
     let obj = (code)(interpreter, &[]);
     interpreter.drop_token(obj);

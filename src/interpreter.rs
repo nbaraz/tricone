@@ -7,6 +7,7 @@ use arrayvec::ArrayVec;
 
 use function::{self, Function};
 use int;
+use string;
 
 #[derive(Debug, Clone)]
 pub enum ErrorKind {
@@ -38,6 +39,9 @@ pub enum Instruction {
     },
     CallFunctionObject {
         num_args: usize,
+    },
+    CreateString {
+        value: String,
     },
 }
 
@@ -179,6 +183,7 @@ impl Interpreter {
         assert_eq!(function_tyidx, consts::FUNCTION_TYPE_ID);
 
         int::register_int_type(&mut interpreter);
+        string::register_string_type(&mut interpreter);
 
         interpreter
     }
@@ -373,6 +378,7 @@ impl Interpreter {
                 }
                 Some(res)
             }
+            CreateString { ref value } => Some(string::create_string(self, value.clone())),
         }
     }
 }

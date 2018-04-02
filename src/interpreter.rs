@@ -1,9 +1,10 @@
-use std::collections::HashMap;
-use std::cell::{Ref, RefCell, RefMut};
-use std::rc::Rc;
-use std::mem;
-use std::process::abort;
 use arrayvec::ArrayVec;
+use std::cell::{Ref, RefCell, RefMut};
+use std::collections::HashMap;
+use std::mem;
+use std::ops::Deref;
+use std::process::abort;
+use std::rc::Rc;
 
 use function::{self, Function};
 use int;
@@ -13,6 +14,7 @@ use string;
 pub enum ErrorKind {
     IndexError,
     WrongArgumentCount,
+    TypeError,
 }
 
 #[derive(Debug, Clone)]
@@ -82,6 +84,7 @@ impl Type {
 pub struct ModuleIndex(pub usize);
 pub struct Module {
     types: Vec<Type>,
+    globals: Scope,
 }
 
 impl Module {
@@ -103,9 +106,93 @@ pub struct Scope {
     vars: ObjectToken,
 }
 
+macro_rules! get_internal_member {
+    ($target:expr, $name:expr) => {
+        $target.get_member(concat!("!", $name))
+    };
+}
+
+macro_rules! assign_member_internal {
+    ($target:expr, $name:expr, $val:expr, $interpreter:expr) => {
+        $target.assign_member(concat!("!", $name).to_owned(), $val)
+    };
+}
+
+impl Scope {
+    fn new() -> Scope {
+        Scope {
+            vars: ObjectToken::new(Object::raw_new(consts::SCOPE_TYPE_ID)),
+        }
+    }
+
+    pub fn dup(&self) -> Scope {
+        Scope {
+            vars: self.vars.dup(),
+        }
+    }
+
+    fn into_child(self, interpreter: &mut Interpreter) -> Scope {
+        let child = Scope::new();
+        assign_member_internal!(child.vars, "parent", self.vars, interpreter);
+        child
+    }
+
+    fn from_object(obj: ObjectToken) -> Result<Scope, TriconeError> {
+        if obj.obj().type_ == consts::SCOPE_TYPE_ID {
+            Ok(Scope { vars: obj })
+        } else {
+            Err(TriconeError {
+                kind: ErrorKind::TypeError,
+            })
+        }
+    }
+
+    fn parent(&self) -> Option<Scope> {
+        get_internal_member!(self.vars, "parent").map(|obj| Scope::from_object(obj).unwrap())
+    }
+
+    fn lookup_name(&self, name: &str) -> Option<ObjectToken> {
+        self.vars
+            .get_member(name)
+            .or_else(|| self.parent().and_then(|parent| parent.lookup_name(name)))
+    }
+}
+
+pub struct Frame {
+    top_scope: Scope,
+}
+
+impl Frame {
+    fn new(top_scope: Scope) -> Frame {
+        Frame { top_scope }
+    }
+
+    fn push_scope(&mut self, interpreter: &mut Interpreter) {
+        self.top_scope = self.top_scope.into_child(interpreter);
+    }
+    fn pop_scope(&mut self, interpreter: &mut Interpreter) {
+        let mut temp = self.top_scope.parent().unwrap();
+        mem::swap(&mut temp, &mut self.top_scope);
+        interpreter.drop_token(temp.vars);
+    }
+}
+
+impl Deref for Frame {
+    type Target = Scope;
+    fn deref(&self) -> &Scope {
+        &self.top_scope
+    }
+}
+
 pub struct Thread {
     operation_stack: Vec<ObjectToken>,
-    scope_stack: Vec<Scope>,
+    frame_stack: Vec<Frame>,
+}
+
+impl Thread {
+    fn top_frame(&mut self) -> &mut Frame {
+        self.frame_stack.last_mut().unwrap()
+    }
 }
 
 #[derive(Debug)]
@@ -114,6 +201,16 @@ pub struct ObjectToken(Rc<RefCell<Object>>);
 impl ObjectToken {
     pub fn new(obj: Object) -> ObjectToken {
         ObjectToken(Rc::new(RefCell::new(obj)))
+    }
+
+    fn get_member(&self, name: &str) -> Option<ObjectToken> {
+        self.obj().members.get(name).map(ObjectToken::dup)
+    }
+
+    fn assign_member(&self, name: String, obj: ObjectToken, interpreter: &mut Interpreter) {
+        if let Some(token) = self.obj_mut().members.insert(name, obj) {
+            interpreter.drop_token(token);
+        }
     }
 
     pub fn obj(&self) -> Ref<Object> {
@@ -152,6 +249,16 @@ pub struct Object {
     pub data: Vec<u8>,
 }
 
+impl Object {
+    fn raw_new(type_: TypeIndex) -> Object {
+        Object {
+            members: HashMap::new(),
+            type_: type_,
+            data: vec![],
+        }
+    }
+}
+
 pub(crate) mod consts {
     use interpreter::{ModuleIndex, TypeIndex};
     // modules depend on objects and vice-versa, need to bootstrap the core module
@@ -173,13 +280,14 @@ impl Interpreter {
     pub fn new() -> Interpreter {
         let core_module = Module {
             types: vec![Type::new("Scope"), Type::new("Unit")],
+            globals: Scope::new(),
         };
 
         let mut interpreter = Interpreter {
             modules: vec![core_module],
             thread: Thread {
                 operation_stack: vec![],
-                scope_stack: vec![],
+                frame_stack: vec![],
             },
         };
 
@@ -216,6 +324,17 @@ impl Interpreter {
         let module = self.get_module_mut(modidx);
         module.types.push(ty);
         TypeIndex(modidx, module.types.len() - 1)
+    }
+
+    pub fn with_new_frame<F, O>(&mut self, scope: Scope, function: F) -> O
+    where
+        F: FnOnce(&mut Frame) -> O,
+    {
+        let mut frame = Frame::new(scope);
+        frame.push_scope(self);
+        let res = function(&mut frame);
+        frame.pop_scope(self);
+        // let frame = Frame::
     }
 
     pub fn create_object(&mut self, tyidx: TypeIndex, num_args: usize) -> ObjectToken {
@@ -304,14 +423,14 @@ impl Interpreter {
     pub fn run_code(&mut self, instructions: &[Instruction]) -> Option<ObjectToken> {
         let mut prev = None;
         let scope = self.create_scope();
-        self.thread.scope_stack.push(scope);
+        self.thread.frame_stack.push(scope);
         for insn in instructions.iter() {
             if let Some(res) = prev {
                 self.thread.operation_stack.push(res)
             }
             prev = self.run_instruction(insn);
         }
-        let scope = self.thread.scope_stack.pop().unwrap();
+        let scope = self.thread.frame_stack.pop().unwrap();
         self.drop_token(scope.vars);
         prev
     }
@@ -362,7 +481,7 @@ impl Interpreter {
             }
             GetTopScope => Some(
                 self.thread
-                    .scope_stack
+                    .frame_stack
                     .last()
                     .expect("Must have at least one scope")
                     .vars

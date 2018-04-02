@@ -1,24 +1,19 @@
-use interpreter::*;
 use generic;
+use interpreter::*;
 
 use std::rc::Rc;
-use std::ops::Deref;
 
-pub struct Code(Rc<Fn(&mut Interpreter, &[ObjectToken]) -> Option<ObjectToken>>);
-
-impl Code {
-    pub fn create(instructions: Vec<Instruction>) -> Code {
-        Code(Rc::new(move |interpreter, _args| {
-            interpreter.run_code(&instructions)
-        }))
-    }
+pub struct Code {
+    function: Rc<Fn(&mut Interpreter, &[ObjectToken]) -> Option<ObjectToken>>,
+    closure: Scope,
 }
 
-impl Deref for Code {
-    type Target = Rc<Fn(&mut Interpreter, &[ObjectToken]) -> Option<ObjectToken>>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
+impl Code {
+    pub fn create(instructions: Vec<Instruction>, closure: Scope) -> Code {
+        Code {
+            function: Rc::new(move |interpreter, _args| interpreter.run_code(&instructions)),
+            closure: closure,
+        }
     }
 }
 
@@ -28,19 +23,25 @@ pub struct Function {
 }
 
 impl Function {
-    pub fn new<F>(code: F, arity: usize) -> Function
+    pub fn new<F>(code: F, arity: usize, closure: Scope) -> Function
     where
         F: Fn(&mut Interpreter, &[ObjectToken]) -> Option<ObjectToken> + 'static,
     {
         Function {
-            code: Code(Rc::new(code)),
+            code: Code {
+                function: Rc::new(code),
+                closure,
+            },
             arity,
         }
     }
 
     pub fn dup(&self) -> Function {
         Function {
-            code: Code(Rc::clone(&self.code.0)),
+            code: Code {
+                function: Rc::clone(&self.code.function),
+                closure: self.code.closure.dup(),
+            },
             arity: self.arity,
         }
     }
@@ -50,6 +51,9 @@ impl Function {
         interpreter: &mut Interpreter,
         args: &[ObjectToken],
     ) -> Result<Option<ObjectToken>, TriconeError> {
+
+        // interpreter.thread.
+
         if self.arity == args.len() {
             Ok((self.code.0)(interpreter, args))
         } else {

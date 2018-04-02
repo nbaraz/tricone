@@ -60,6 +60,12 @@ impl Function {
     }
 }
 
+impl generic::TriconeDefault for Function {
+    fn tricone_default() -> Function {
+        Function::new(move |_, _| panic!("Uninitialized function"), 0)
+    }
+}
+
 pub fn register_func_type(interpreter: &mut Interpreter) -> TypeIndex {
     let func_ty = generic::create_type_for::<Function>("Function");
     interpreter.register_type(consts::CORE_MODULE_ID, func_ty)

@@ -24,6 +24,7 @@ pub struct TriconeError {
 pub enum Instruction {
     CreateObject {
         type_: TypeIndex,
+        num_args: usize,
     },
     Assign {
         // Assign a = pop(), b = pop(), a[name] = `b`
@@ -217,15 +218,49 @@ impl Interpreter {
         TypeIndex(modidx, module.types.len() - 1)
     }
 
-    pub fn create_object(&mut self, tyidx: TypeIndex) -> ObjectToken {
+    pub fn create_object(&mut self, tyidx: TypeIndex, num_args: usize) -> ObjectToken {
         let obj = ObjectToken::new(Object {
             members: HashMap::new(),
             type_: tyidx,
             data: vec![],
         });
 
-        self.maybe_call_no_args_no_ret_method(&obj, consts::CREATE_METHOD_NAME);
+        if let Some(create) = self.get_type(tyidx).get_method(consts::CREATE_METHOD_NAME) {
+            let mut args = Vec::with_capacity(num_args);
+            let op_stack_len = self.thread.operation_stack.len();
+            args.push(obj.dup());
+            args.extend(
+                self.thread
+                    .operation_stack
+                    .drain((op_stack_len - num_args)..op_stack_len),
+            );
+            let res = self.call_function_with_owned_args(create, args);
+            self.drop_unit(res);
+        }
+
         obj
+    }
+
+    fn call_function_with_owned_args<Args>(
+        &mut self,
+        func: Function,
+        args: Args,
+    ) -> Option<ObjectToken>
+    where
+        Args: IntoIterator<Item = ObjectToken> + AsRef<[ObjectToken]>,
+    {
+        let res = func.call(self, args.as_ref());
+        for arg in args {
+            self.drop_token(arg);
+        }
+        res.unwrap()
+    }
+
+    fn drop_unit(&mut self, unit: Option<ObjectToken>) {
+        if let Some(obj) = unit {
+            assert_eq!(consts::UNIT_TYPE_ID, obj.obj().type_);
+            self.drop_token(obj);
+        }
     }
 
     fn maybe_call_no_args_no_ret_method(&mut self, token: &ObjectToken, name: &str) {
@@ -245,7 +280,7 @@ impl Interpreter {
     }
 
     pub fn get_unit_object(&mut self) -> ObjectToken {
-        self.create_object(consts::UNIT_TYPE_ID)
+        self.create_object(consts::UNIT_TYPE_ID, 0)
     }
 
     fn get_method(&self, obj: &Object, name: &str) -> Option<Function> {
@@ -262,14 +297,14 @@ impl Interpreter {
 
     pub fn create_scope(&mut self) -> Scope {
         Scope {
-            vars: self.create_object(consts::SCOPE_TYPE_ID),
+            vars: self.create_object(consts::SCOPE_TYPE_ID, 0),
         }
     }
 
     pub fn run_code(&mut self, instructions: &[Instruction]) -> Option<ObjectToken> {
         let mut prev = None;
-        let scope = self.create_object(consts::SCOPE_TYPE_ID);
-        self.thread.scope_stack.push(Scope { vars: scope });
+        let scope = self.create_scope();
+        self.thread.scope_stack.push(scope);
         for insn in instructions.iter() {
             if let Some(res) = prev {
                 self.thread.operation_stack.push(res)
@@ -297,10 +332,22 @@ impl Interpreter {
         }
     }
 
+    fn get_args_from_stack<O>(&mut self, num_args: usize, container: &mut O)
+    where
+        O: Extend<ObjectToken>,
+    {
+        let op_stack_len = self.thread.operation_stack.len();
+        container.extend(
+            self.thread
+                .operation_stack
+                .drain((op_stack_len - num_args)..op_stack_len),
+        )
+    }
+
     pub fn run_instruction(&mut self, insn: &Instruction) -> Option<ObjectToken> {
         use self::Instruction::*;
         match *insn {
-            CreateObject { type_ } => Some(self.create_object(type_)),
+            CreateObject { type_, num_args } => Some(self.create_object(type_, num_args)),
             Assign { ref name } => {
                 let mut scope = self.thread
                     .operation_stack
@@ -332,11 +379,8 @@ impl Interpreter {
                     panic!("Not enough arguments passed! TODO: runtime error");
                 }
 
-                let op_stack_len = self.thread.operation_stack.len();
-                let args = self.thread
-                    .operation_stack
-                    .split_off(op_stack_len - num_args);
-
+                let mut args = Vec::with_capacity(num_args);
+                self.get_args_from_stack(num_args, &mut args);
                 let res = self.call_method(name, &args);
                 for arg in args {
                     self.drop_token(arg);
@@ -374,11 +418,8 @@ impl Interpreter {
                     panic!("Not enough arguments passed! TODO: runtime error");
                 }
 
-                let op_stack_len = self.thread.operation_stack.len();
-                let args = self.thread
-                    .operation_stack
-                    .split_off(op_stack_len - num_args);
-
+                let mut args = Vec::with_capacity(num_args);
+                self.get_args_from_stack(num_args, &mut args);
                 let function_obj = self.thread
                     .operation_stack
                     .pop()

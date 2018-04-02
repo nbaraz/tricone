@@ -4,43 +4,54 @@ use std::mem;
 use std::ops::Add;
 use std::ptr;
 
-// TODO: memory alignment
-
 pub unsafe fn get_unsafe_copy<T: Copy>(obj: &Object) -> T {
-    assert_eq!(obj.data.len(), mem::size_of::<T>());
-    *(obj.data.as_ptr() as *const T)
+    *get_unsafe_ref(obj)
 }
 
 pub unsafe fn get_unsafe_ref<T>(obj: &Object) -> &T {
-    assert_eq!(obj.data.len(), mem::size_of::<T>());
-    &*(obj.data.as_ptr() as *const T)
+    assert_eq!(obj.data.len(), aligned_allocation_size::<T>());
+    &*(align_pointer::<T>(obj.data.as_ptr() as usize) as *const T)
 }
 
 pub unsafe fn get_unsafe_mut<T>(obj: &mut Object) -> &mut T {
-    assert_eq!(obj.data.len(), mem::size_of::<T>());
-    &mut *(obj.data.as_mut_ptr() as *mut T)
+    assert_eq!(obj.data.len(), aligned_allocation_size::<T>());
+    &mut *(align_pointer::<T>(obj.data.as_mut_ptr() as usize) as *mut T)
 }
 
 pub unsafe fn put_unsafe<T>(obj: &mut Object, val: T) {
-    assert_eq!(obj.data.len(), mem::size_of::<T>());
-    let pointer = obj.data.as_mut_ptr() as *mut T;
-    ptr::write(pointer, val);
+    *get_unsafe_mut(obj) = val;
 }
 
-pub fn create_type_for<T>(name: &str) -> Type {
+fn align_pointer<T>(pointer: usize) -> usize {
+    let align = mem::align_of::<T>();
+    (pointer + align - 1) & !(align - 1)
+}
+
+fn aligned_allocation_size<T>() -> usize {
+    mem::size_of::<T>() + mem::align_of::<T>() - 1
+}
+
+pub fn create_type_for<T: TriconeDefault>(name: &str) -> Type {
     let mut ty = Type::new(name);
 
+    // TODO: make this a 'static method'
     ty.register_method(consts::CREATE_METHOD_NAME, 0, move |_itrp, args| {
         let mut target = args[0].obj_mut();
-        target.data.resize(mem::size_of::<T>(), 0);
+        let mut data = Vec::with_capacity(aligned_allocation_size::<T>());
+
+        unsafe {
+            data.set_len(aligned_allocation_size::<T>());
+            target.data = data;
+            put_unsafe(&mut target, <T as TriconeDefault>::tricone_default());
+        }
+
         None
     });
 
-    // TODO: can currently drop uninitialized values - fix
     ty.register_method(consts::DROP_METHOD_NAME, 0, move |_itrp, args| {
         let mut target = args[0].obj_mut();
         unsafe {
-            ptr::drop_in_place(target.data.as_mut_ptr() as *mut T);
+            ptr::drop_in_place(get_unsafe_mut::<T>(&mut target) as *mut T);
         }
         None
     });
@@ -55,7 +66,7 @@ pub fn impl_add_for<T: Add + Clone>(ty: &mut Type) {
 
         assert_eq!(a.type_, b.type_);
 
-        let res_obj = itrp.create_object(a.type_);
+        let res_obj = itrp.create_object(a.type_, 0);
         unsafe {
             let mut res_ = res_obj.obj_mut();
             let (val_a, val_b): (&T, &T) = (get_unsafe_ref(&a), get_unsafe_ref(&b));
@@ -64,4 +75,17 @@ pub fn impl_add_for<T: Add + Clone>(ty: &mut Type) {
 
         Some(res_obj)
     });
+}
+
+pub trait TriconeDefault: Sized {
+    fn tricone_default() -> Self;
+}
+
+impl<T> TriconeDefault for T
+where
+    T: Default,
+{
+    fn tricone_default() -> Self {
+        Default::default()
+    }
 }

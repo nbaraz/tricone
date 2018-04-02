@@ -17,7 +17,7 @@ pub fn create_string(interpreter: &mut Interpreter, value: String) -> ObjectToke
     let tyidx = interpreter
         .lookup_type(consts::CORE_MODULE_ID, "String")
         .unwrap();
-    let token = interpreter.create_object(tyidx);
+    let token = interpreter.create_object(tyidx, 0);
     {
         let mut obj = token.obj_mut();
         unsafe { generic::put_unsafe(&mut obj, value) }

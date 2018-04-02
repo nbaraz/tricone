@@ -31,7 +31,7 @@ pub fn do_hello(interpreter: &mut Interpreter) {
 
     use interpreter::Instruction::*;
     let code = function::Code::create(vec![
-        CreateObject { type_: hello_idx },
+        CreateObject { type_: hello_idx , num_args: 0},
         CallMethod {
             name: "hello".to_owned(),
             num_args: 0,

@@ -1,5 +1,5 @@
-use interpreter::*;
 use function;
+use interpreter::*;
 
 fn register_hello(interpreter: &mut Interpreter) -> TypeIndex {
     let mut hello_ty = Type::new("Hello");
@@ -31,7 +31,10 @@ pub fn do_hello(interpreter: &mut Interpreter) {
 
     use interpreter::Instruction::*;
     let code = function::Code::create(vec![
-        CreateObject { type_: hello_idx , num_args: 0},
+        CreateObject {
+            type_: hello_idx,
+            num_args: 0,
+        },
         CallMethod {
             name: "hello".to_owned(),
             num_args: 0,
@@ -47,6 +50,8 @@ pub fn do_hello(interpreter: &mut Interpreter) {
         },
         Diag,
     ]);
-    let obj = (code)(interpreter, &[]);
-    assert!(obj.is_none());
+    let func = function::Function::from_code(code, 0, Scope::new());
+    let obj = func.call(interpreter, &[]);
+    assert!(obj.unwrap().is_none());
+    interpreter.drop_token(func.closure.vars);
 }

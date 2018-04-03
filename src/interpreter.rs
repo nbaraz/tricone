@@ -41,6 +41,9 @@ pub enum Instruction {
     GetMember {
         name: String,
     },
+    LookupName {
+        name: String,
+    },
     CallFunctionObject {
         num_args: usize,
         use_result: bool,
@@ -57,6 +60,7 @@ pub struct TypeIndex(ModuleIndex, usize);
 pub struct Type {
     name: String,
     methods: HashMap<String, Function>,
+    scope: Scope,
 }
 
 impl Type {
@@ -64,6 +68,7 @@ impl Type {
         Type {
             name: name.to_owned(),
             methods: HashMap::new(),
+            scope: Scope::new(),
         }
     }
 
@@ -75,8 +80,10 @@ impl Type {
     where
         F: Fn(&mut Interpreter, &[ObjectToken]) -> Option<ObjectToken> + 'static,
     {
-        self.methods
-            .insert(name.to_owned(), Function::new(code, arity + 1));
+        self.methods.insert(
+            name.to_owned(),
+            Function::new(code, arity + 1, self.scope.dup()),
+        );
     }
 }
 
@@ -103,7 +110,7 @@ impl Module {
 }
 
 pub struct Scope {
-    vars: ObjectToken,
+    pub vars: ObjectToken,
 }
 
 macro_rules! get_internal_member {
@@ -114,12 +121,12 @@ macro_rules! get_internal_member {
 
 macro_rules! assign_member_internal {
     ($target:expr, $name:expr, $val:expr, $interpreter:expr) => {
-        $target.assign_member(concat!("!", $name).to_owned(), $val)
+        $target.assign_member(concat!("!", $name).to_owned(), $val, $interpreter)
     };
 }
 
 impl Scope {
-    fn new() -> Scope {
+    pub fn new() -> Scope {
         Scope {
             vars: ObjectToken::new(Object::raw_new(consts::SCOPE_TYPE_ID)),
         }
@@ -158,6 +165,12 @@ impl Scope {
     }
 }
 
+impl Default for Scope {
+    fn default() -> Scope {
+        Scope::new()
+    }
+}
+
 pub struct Frame {
     top_scope: Scope,
 }
@@ -168,8 +181,13 @@ impl Frame {
     }
 
     fn push_scope(&mut self, interpreter: &mut Interpreter) {
-        self.top_scope = self.top_scope.into_child(interpreter);
+        unsafe {
+            let scope = mem::replace(&mut self.top_scope, mem::uninitialized());
+            let uninitialized = mem::replace(&mut self.top_scope, scope.into_child(interpreter));
+            mem::forget(uninitialized);
+        }
     }
+
     fn pop_scope(&mut self, interpreter: &mut Interpreter) {
         let mut temp = self.top_scope.parent().unwrap();
         mem::swap(&mut temp, &mut self.top_scope);
@@ -237,7 +255,11 @@ impl ObjectToken {
 impl Drop for ObjectToken {
     fn drop(&mut self) {
         // TODO: abort
-        println!("Pass object tokens to the interpreter to destroy them");
+        let obj = self.obj();
+        println!(
+            "Pass object tokens to the interpreter to destroy them, ty: {:?}, members: {:?}",
+            obj.type_, obj.members
+        );
         abort();
     }
 }
@@ -253,7 +275,7 @@ impl Object {
     fn raw_new(type_: TypeIndex) -> Object {
         Object {
             members: HashMap::new(),
-            type_: type_,
+            type_,
             data: vec![],
         }
     }
@@ -328,13 +350,37 @@ impl Interpreter {
 
     pub fn with_new_frame<F, O>(&mut self, scope: Scope, function: F) -> O
     where
-        F: FnOnce(&mut Frame) -> O,
+        F: FnOnce(&mut Interpreter) -> O,
     {
         let mut frame = Frame::new(scope);
         frame.push_scope(self);
-        let res = function(&mut frame);
+        self.thread.frame_stack.push(frame);
+        let res = (function)(self);
+        let mut frame = self.thread.frame_stack.pop().unwrap();
         frame.pop_scope(self);
-        // let frame = Frame::
+        self.drop_token(frame.top_scope.vars);
+        res
+    }
+
+    fn with_current_frame<F, O>(&mut self, function: F) -> O
+    where
+        F: FnOnce(&mut Interpreter, &mut Frame) -> O,
+    {
+        // Ugly :(
+        let mut frame = self.thread.frame_stack.pop().unwrap();
+        let res = (function)(self, &mut frame);
+        self.thread.frame_stack.push(frame);
+        res
+    }
+
+    pub fn with_new_scope<F, O>(&mut self, function: F) -> O
+    where
+        F: FnOnce(&mut Interpreter) -> O,
+    {
+        self.with_current_frame(|i, f| f.push_scope(i));
+        let res = (function)(self);
+        self.with_current_frame(|i, f| f.pop_scope(i));
+        res
     }
 
     pub fn create_object(&mut self, tyidx: TypeIndex, num_args: usize) -> ObjectToken {
@@ -372,6 +418,7 @@ impl Interpreter {
         for arg in args {
             self.drop_token(arg);
         }
+        self.drop_token(func.closure.vars);
         res.unwrap()
     }
 
@@ -395,6 +442,7 @@ impl Interpreter {
                 assert_eq!(consts::UNIT_TYPE_ID, obj.obj().type_);
                 self.drop_token(obj);
             }
+            self.drop_token(method.closure.vars);
         }
     }
 
@@ -411,7 +459,9 @@ impl Interpreter {
         let target = args.last().unwrap();
         let method = self.get_method(&target.obj(), name)
             .expect("Called nonexistent method. TODO: runtime error");
-        method.call(self, args).unwrap()
+        let res = method.call(self, args).unwrap();
+        self.drop_token(method.closure.vars);
+        res
     }
 
     pub fn create_scope(&mut self) -> Scope {
@@ -422,23 +472,21 @@ impl Interpreter {
 
     pub fn run_code(&mut self, instructions: &[Instruction]) -> Option<ObjectToken> {
         let mut prev = None;
-        let scope = self.create_scope();
-        self.thread.frame_stack.push(scope);
         for insn in instructions.iter() {
             if let Some(res) = prev {
                 self.thread.operation_stack.push(res)
             }
             prev = self.run_instruction(insn);
         }
-        let scope = self.thread.frame_stack.pop().unwrap();
-        self.drop_token(scope.vars);
         prev
     }
 
     pub fn drop_token(&mut self, token: ObjectToken) {
         if Rc::strong_count(&token.0) == 1 {
-            self.maybe_call_no_args_no_ret_method(&token, consts::DROP_METHOD_NAME);
-            assert_eq!(Rc::strong_count(&token.0), 1);
+            if token.obj().type_ != consts::UNIT_TYPE_ID {
+                self.maybe_call_no_args_no_ret_method(&token, consts::DROP_METHOD_NAME);
+                assert_eq!(Rc::strong_count(&token.0), 1);
+            }
 
             let mut object = Rc::try_unwrap(token.into_rc()).unwrap().into_inner();
 
@@ -529,6 +577,7 @@ impl Interpreter {
                 self.drop_token(item);
                 Some(res)
             }
+            LookupName { ref name } => self.thread.top_frame().lookup_name(name),
             CallFunctionObject {
                 num_args,
                 use_result,
@@ -574,5 +623,46 @@ impl Interpreter {
 impl Default for Interpreter {
     fn default() -> Self {
         Interpreter::new()
+    }
+}
+
+impl Drop for Interpreter {
+    fn drop(&mut self) {
+        let unit = self.get_unit_object();
+        let mut scopes = vec![];
+
+        for module in &mut self.modules {
+            scopes.push(mem::replace(
+                &mut module.globals,
+                Scope { vars: unit.dup() },
+            ));
+            for ty in &mut module.types {
+                scopes.push(mem::replace(&mut ty.scope, Scope { vars: unit.dup() }));
+
+                for method in ty.methods.values_mut() {
+                    scopes.push(mem::replace(
+                        &mut method.closure,
+                        Scope { vars: unit.dup() },
+                    ));
+                }
+            }
+        }
+
+        for scope in scopes {
+            self.drop_token(scope.vars);
+        }
+
+        self.drop_token(unit);
+
+        let modules = mem::replace(&mut self.modules, Vec::new());
+        for module in modules {
+            for ty in module.types {
+                for (_, method) in ty.methods {
+                    self.drop_token(method.closure.vars);
+                }
+                self.drop_token(ty.scope.vars);
+            }
+            self.drop_token(module.globals.vars);
+        }
     }
 }

@@ -5,14 +5,12 @@ use std::rc::Rc;
 
 pub struct Code {
     function: Rc<Fn(&mut Interpreter, &[ObjectToken]) -> Option<ObjectToken>>,
-    closure: Scope,
 }
 
 impl Code {
-    pub fn create(instructions: Vec<Instruction>, closure: Scope) -> Code {
+    pub fn create(instructions: Vec<Instruction>) -> Code {
         Code {
             function: Rc::new(move |interpreter, _args| interpreter.run_code(&instructions)),
-            closure: closure,
         }
     }
 }
@@ -20,6 +18,7 @@ impl Code {
 pub struct Function {
     code: Code,
     arity: usize,
+    pub closure: Scope,
 }
 
 impl Function {
@@ -30,9 +29,17 @@ impl Function {
         Function {
             code: Code {
                 function: Rc::new(code),
-                closure,
             },
             arity,
+            closure,
+        }
+    }
+
+    pub fn from_code(code: Code, arity: usize, closure: Scope) -> Function {
+        Function {
+            code,
+            arity,
+            closure,
         }
     }
 
@@ -40,9 +47,9 @@ impl Function {
         Function {
             code: Code {
                 function: Rc::clone(&self.code.function),
-                closure: self.code.closure.dup(),
             },
             arity: self.arity,
+            closure: self.closure.dup(),
         }
     }
 
@@ -51,11 +58,12 @@ impl Function {
         interpreter: &mut Interpreter,
         args: &[ObjectToken],
     ) -> Result<Option<ObjectToken>, TriconeError> {
-
-        // interpreter.thread.
-
         if self.arity == args.len() {
-            Ok((self.code.0)(interpreter, args))
+            Ok(
+                interpreter.with_new_frame(self.closure.dup(), |interpreter| {
+                    (self.code.function)(interpreter, args)
+                }),
+            )
         } else {
             Err(TriconeError {
                 kind: ErrorKind::WrongArgumentCount,
@@ -66,7 +74,11 @@ impl Function {
 
 impl generic::TriconeDefault for Function {
     fn tricone_default() -> Function {
-        Function::new(move |_, _| panic!("Uninitialized function"), 0)
+        Function::new(
+            move |_, _| panic!("Uninitialized function"),
+            0,
+            Scope::new(),
+        )
     }
 }
 

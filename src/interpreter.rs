@@ -33,6 +33,9 @@ pub enum Instruction {
         name: String,
     },
     GetTopScope,
+    GetModuleGlobals {
+        name: String,
+    },
     CallMethod {
         name: String,
         num_args: usize,
@@ -92,14 +95,16 @@ impl Type {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ModuleIndex(pub usize);
 pub struct Module {
+    pub name: String,
     pub index: ModuleIndex,
     pub types: Vec<Type>,
     pub globals: Scope,
 }
 
 impl Module {
-    pub fn new(index: ModuleIndex) -> Module {
+    pub fn new(index: ModuleIndex, name: &str) -> Module {
         Module {
+            name: name.to_owned(),
             index,
             types: vec![],
             globals: Scope::new(),
@@ -198,6 +203,14 @@ impl Default for Scope {
     }
 }
 
+impl Deref for Scope {
+    type Target = ObjectToken;
+
+    fn deref(&self) -> &ObjectToken {
+        &self.vars
+    }
+}
+
 pub struct Frame {
     top_scope: Scope,
 }
@@ -252,7 +265,7 @@ impl ObjectToken {
         self.obj().members.get(name).map(ObjectToken::dup)
     }
 
-    fn assign_member(&self, name: String, obj: ObjectToken, interpreter: &mut Interpreter) {
+    pub fn assign_member(&self, name: String, obj: ObjectToken, interpreter: &mut Interpreter) {
         if let Some(token) = self.obj_mut().members.insert(name, obj) {
             interpreter.drop_token(token);
         }
@@ -299,7 +312,7 @@ pub struct Object {
 }
 
 impl Object {
-    fn raw_new(type_: TypeIndex) -> Object {
+    pub fn raw_new(type_: TypeIndex) -> Object {
         Object {
             members: HashMap::new(),
             type_,
@@ -335,7 +348,7 @@ impl Interpreter {
             },
         };
 
-        interpreter.create_module(move |interpreter, module| {
+        interpreter.create_module("core", move |interpreter, module| {
             for ty_name in &["Scope", "Unit"] {
                 module.create_type(interpreter, ty_name, move |_interpreter, _module, _ty| {});
             }
@@ -347,15 +360,23 @@ impl Interpreter {
         interpreter
     }
 
-    pub fn create_module<F, O>(&mut self, func: F) -> (ModuleIndex, O)
+    pub fn create_module<F, O>(&mut self, name: &str, func: F) -> (ModuleIndex, O)
     where
         F: FnOnce(&mut Interpreter, &mut Module) -> O,
     {
         let mod_idx = ModuleIndex(self.modules.len());
-        let mut module = Module::new(mod_idx);
+        let mut module = Module::new(mod_idx, name);
         let res = (func)(self, &mut module);
         self.modules.push(module);
         (mod_idx, res)
+    }
+
+    fn lookup_module_index(&self, name: &str) -> Option<ModuleIndex> {
+        self.modules
+            .iter()
+            .enumerate()
+            .find(|(_, m)| m.name == name)
+            .map(|(i, _)| ModuleIndex(i))
     }
 
     pub fn get_module(&self, idx: ModuleIndex) -> &Module {
@@ -570,6 +591,11 @@ impl Interpreter {
                     .vars
                     .dup(),
             ),
+            GetModuleGlobals { ref name } => {
+                let idx = self.lookup_module_index(name)
+                    .expect("Module does not exist! TODO: runtime error");
+                Some(self.get_module(idx).globals.vars.dup())
+            }
             CallMethod {
                 ref name,
                 mut num_args,
@@ -627,16 +653,21 @@ impl Interpreter {
                     .operation_stack
                     .pop()
                     .expect("Need a function to call!");
-                let function_ref = function_obj.obj();
+                let res = {
+                    let function_ref = function_obj.obj();
 
-                // Should be a runtime error
-                assert_eq!(function_ref.type_, consts::FUNCTION_TYPE_ID);
-                let function = function::function_from_function_object(&function_ref);
+                    // Should be a runtime error
+                    assert_eq!(function_ref.type_, consts::FUNCTION_TYPE_ID);
+                    let function = function::function_from_function_object(&function_ref);
 
-                let res = function.call(self, &args).unwrap();
+                    function.call(self, &args).unwrap()
+                };
+
                 for arg in args {
                     self.drop_token(arg);
                 }
+                self.drop_token(function_obj);
+
                 if use_result {
                     Some(res.unwrap_or_else(|| self.get_unit_object()))
                 } else {

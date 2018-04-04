@@ -31,6 +31,20 @@ fn aligned_allocation_size<T>() -> usize {
     mem::size_of::<T>() + mem::align_of::<T>() - 1
 }
 
+pub unsafe fn create_object_from_val<T>(ty_idx: TypeIndex, val: T) -> Object {
+    let mut obj = Object::raw_new(ty_idx);
+    initialize_object_from_val(&mut obj, val);
+    obj
+}
+
+pub unsafe fn initialize_object_from_val<T>(obj: &mut Object, val: T) {
+    let mut data = Vec::with_capacity(aligned_allocation_size::<T>());
+
+    data.set_len(aligned_allocation_size::<T>());
+    obj.data = data;
+    put_unsafe(obj, val);
+}
+
 pub fn create_type_for<T: TriconeDefault, F>(
     interpreter: &mut Interpreter,
     module: &mut Module,
@@ -43,13 +57,12 @@ pub fn create_type_for<T: TriconeDefault, F>(
         // TODO: make this a 'static method'
         ty.register_method(consts::CREATE_METHOD_NAME, 0, move |_itrp, args| {
             let mut target = args[0].obj_mut();
-            let mut data = Vec::with_capacity(aligned_allocation_size::<T>());
-
             unsafe {
-                data.set_len(aligned_allocation_size::<T>());
-                target.data = data;
-                put_unsafe(&mut target, <T as TriconeDefault>::tricone_default());
-            }
+                initialize_object_from_val::<T>(
+                    &mut target,
+                    <T as TriconeDefault>::tricone_default(),
+                )
+            };
 
             None
         });

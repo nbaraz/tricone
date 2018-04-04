@@ -89,6 +89,10 @@ pub fn register_func_type(interpreter: &mut Interpreter, module: &mut Module) {
     });
 }
 
+pub fn function_object_from_function(func: Function) -> ObjectToken {
+    ObjectToken::new(unsafe { generic::create_object_from_val(consts::FUNCTION_TYPE_ID, func) })
+}
+
 pub fn function_from_function_object(obj: &Object) -> &Function {
     if obj.type_ != consts::FUNCTION_TYPE_ID {
         panic!("Not a function object!");

@@ -82,9 +82,11 @@ impl generic::TriconeDefault for Function {
     }
 }
 
-pub fn register_func_type(interpreter: &mut Interpreter) -> TypeIndex {
-    let func_ty = generic::create_type_for::<Function>("Function");
-    interpreter.register_type(consts::CORE_MODULE_ID, func_ty)
+pub fn register_func_type(interpreter: &mut Interpreter, module: &mut Module) {
+    generic::create_type_for::<Function, _>(interpreter, module, "Function", |_, _, ty| {
+        // The interpreter needs to know if an object is a function object easily
+        assert_eq!(ty.index, consts::FUNCTION_TYPE_ID);
+    });
 }
 
 pub fn function_from_function_object(obj: &Object) -> &Function {

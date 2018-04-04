@@ -61,14 +61,16 @@ pub struct Type {
     name: String,
     methods: HashMap<String, Function>,
     scope: Scope,
+    pub index: TypeIndex,
 }
 
 impl Type {
-    pub fn new(name: &str) -> Type {
+    pub fn new(name: &str, index: TypeIndex) -> Type {
         Type {
             name: name.to_owned(),
             methods: HashMap::new(),
             scope: Scope::new(),
+            index,
         }
     }
 
@@ -90,11 +92,20 @@ impl Type {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ModuleIndex(pub usize);
 pub struct Module {
-    types: Vec<Type>,
-    globals: Scope,
+    pub index: ModuleIndex,
+    pub types: Vec<Type>,
+    pub globals: Scope,
 }
 
 impl Module {
+    pub fn new(index: ModuleIndex) -> Module {
+        Module {
+            index,
+            types: vec![],
+            globals: Scope::new(),
+        }
+    }
+
     #[allow(unused)]
     fn lookup_type_mut(&mut self, name: &str) -> Option<&mut Type> {
         self.types.iter_mut().find(|ty| ty.name == name)
@@ -106,6 +117,22 @@ impl Module {
             .enumerate()
             .filter_map(|(i, ty)| if ty.name == name { Some(i) } else { None })
             .next()
+    }
+
+    pub fn create_type<F, O>(
+        &mut self,
+        interpreter: &mut Interpreter,
+        name: &str,
+        func: F,
+    ) -> (TypeIndex, O)
+    where
+        F: FnOnce(&mut Interpreter, &mut Module, &mut Type) -> O,
+    {
+        let index = TypeIndex(self.index, self.types.len());
+        let mut ty = Type::new(name, index);
+        let res = (func)(interpreter, self, &mut ty);
+        self.types.push(ty);
+        (index, res)
     }
 }
 
@@ -300,27 +327,35 @@ pub struct Interpreter {
 
 impl Interpreter {
     pub fn new() -> Interpreter {
-        let core_module = Module {
-            types: vec![Type::new("Scope"), Type::new("Unit")],
-            globals: Scope::new(),
-        };
-
         let mut interpreter = Interpreter {
-            modules: vec![core_module],
+            modules: vec![],
             thread: Thread {
                 operation_stack: vec![],
                 frame_stack: vec![],
             },
         };
 
-        let function_tyidx = function::register_func_type(&mut interpreter);
-        // The interpreter needs to know if an object is a function object easily
-        assert_eq!(function_tyidx, consts::FUNCTION_TYPE_ID);
-
-        int::register_int_type(&mut interpreter);
-        string::register_string_type(&mut interpreter);
+        interpreter.create_module(move |interpreter, module| {
+            for ty_name in &["Scope", "Unit"] {
+                module.create_type(interpreter, ty_name, move |_interpreter, _module, _ty| {});
+            }
+            function::register_func_type(interpreter, module);
+            int::register_int_type(interpreter, module);
+            string::register_string_type(interpreter, module);
+        });
 
         interpreter
+    }
+
+    pub fn create_module<F, O>(&mut self, func: F) -> (ModuleIndex, O)
+    where
+        F: FnOnce(&mut Interpreter, &mut Module) -> O,
+    {
+        let mod_idx = ModuleIndex(self.modules.len());
+        let mut module = Module::new(mod_idx);
+        let res = (func)(self, &mut module);
+        self.modules.push(module);
+        (mod_idx, res)
     }
 
     pub fn get_module(&self, idx: ModuleIndex) -> &Module {

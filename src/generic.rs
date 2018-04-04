@@ -31,32 +31,39 @@ fn aligned_allocation_size<T>() -> usize {
     mem::size_of::<T>() + mem::align_of::<T>() - 1
 }
 
-pub fn create_type_for<T: TriconeDefault>(name: &str) -> Type {
-    let mut ty = Type::new(name);
+pub fn create_type_for<T: TriconeDefault, F>(
+    interpreter: &mut Interpreter,
+    module: &mut Module,
+    name: &str,
+    with_ty: F,
+) where
+    F: FnOnce(&mut Interpreter, &mut Module, &mut Type),
+{
+    module.create_type(interpreter, name, |interpreter, module, ty| {
+        // TODO: make this a 'static method'
+        ty.register_method(consts::CREATE_METHOD_NAME, 0, move |_itrp, args| {
+            let mut target = args[0].obj_mut();
+            let mut data = Vec::with_capacity(aligned_allocation_size::<T>());
 
-    // TODO: make this a 'static method'
-    ty.register_method(consts::CREATE_METHOD_NAME, 0, move |_itrp, args| {
-        let mut target = args[0].obj_mut();
-        let mut data = Vec::with_capacity(aligned_allocation_size::<T>());
+            unsafe {
+                data.set_len(aligned_allocation_size::<T>());
+                target.data = data;
+                put_unsafe(&mut target, <T as TriconeDefault>::tricone_default());
+            }
 
-        unsafe {
-            data.set_len(aligned_allocation_size::<T>());
-            target.data = data;
-            put_unsafe(&mut target, <T as TriconeDefault>::tricone_default());
-        }
+            None
+        });
 
-        None
+        ty.register_method(consts::DROP_METHOD_NAME, 0, move |_itrp, args| {
+            let mut target = args[0].obj_mut();
+            unsafe {
+                ptr::drop_in_place(get_unsafe_mut::<T>(&mut target) as *mut T);
+            }
+            None
+        });
+
+        (with_ty)(interpreter, module, ty);
     });
-
-    ty.register_method(consts::DROP_METHOD_NAME, 0, move |_itrp, args| {
-        let mut target = args[0].obj_mut();
-        unsafe {
-            ptr::drop_in_place(get_unsafe_mut::<T>(&mut target) as *mut T);
-        }
-        None
-    });
-
-    ty
 }
 
 pub fn impl_add_for<T: Add + Clone>(ty: &mut Type) {

@@ -1,16 +1,14 @@
 use generic;
 use interpreter::*;
 
-pub fn register_string_type(interpreter: &mut Interpreter) {
-    let mut string_ty = generic::create_type_for::<String>("String");
-
-    string_ty.register_method("println", 0, move |_itrp, args| {
-        let target = args[0].obj();
-        println!("{}", unsafe { generic::get_unsafe_ref::<String>(&target) });
-        None
+pub fn register_string_type(interpreter: &mut Interpreter, module: &mut Module) {
+    generic::create_type_for::<String, _>(interpreter, module, "String", |_, _, ty| {
+        ty.register_method("println", 0, move |_itrp, args| {
+            let target = args[0].obj();
+            println!("{}", unsafe { generic::get_unsafe_ref::<String>(&target) });
+            None
+        });
     });
-
-    interpreter.register_type(consts::CORE_MODULE_ID, string_ty);
 }
 
 pub fn create_string(interpreter: &mut Interpreter, value: String) -> ObjectToken {

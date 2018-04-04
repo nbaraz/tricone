@@ -19,7 +19,7 @@ pub unsafe fn get_unsafe_mut<T>(obj: &mut Object) -> &mut T {
 }
 
 pub unsafe fn put_unsafe<T>(obj: &mut Object, val: T) {
-    *get_unsafe_mut(obj) = val;
+    ptr::write(get_unsafe_mut(obj) as *mut T, val);
 }
 
 fn align_pointer<T>(pointer: usize) -> usize {

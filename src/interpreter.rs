@@ -221,7 +221,13 @@ impl Scope {
     }
 
     fn lookup_name(&self, name: &str) -> Option<ObjectToken> {
-        Scope::token_lookup_name(&self.vars, name)
+        let res = Scope::token_lookup_name(&self.vars, name);
+        if res.is_some() {
+            println!("found {}!", name);
+        } else {
+            println!("did not find {}!", name);
+        }
+        res
     }
 }
 

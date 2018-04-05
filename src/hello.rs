@@ -56,6 +56,12 @@ fn register_hello(interpreter: &mut Interpreter) -> TypeIndex {
                     num_args: 0,
                     use_result: false,
                 },
+                GetTopScope,
+                Assign {
+                    name: "this".to_owned(),
+                },
+                GetTopScope,
+                DebugPrintObject,
             ]),
             0,
             module.globals.dup(),

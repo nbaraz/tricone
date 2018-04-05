@@ -1,6 +1,9 @@
 use arrayvec::ArrayVec;
 use std::cell::{Ref, RefCell, RefMut};
 use std::collections::HashMap;
+use std::collections::HashSet;
+use std::fmt;
+use std::hash::{Hash, Hasher};
 use std::mem;
 use std::ops::Deref;
 use std::process::abort;
@@ -58,6 +61,7 @@ pub enum Instruction {
         value: i64,
     },
     Diag,
+    DebugPrintObject,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -287,7 +291,6 @@ impl Thread {
     }
 }
 
-#[derive(Debug)]
 pub struct ObjectToken(Rc<RefCell<Object>>);
 
 impl ObjectToken {
@@ -334,6 +337,43 @@ impl ObjectToken {
     }
 }
 
+impl PartialEq for ObjectToken {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.as_ptr() == other.0.as_ptr()
+    }
+}
+
+impl Eq for ObjectToken {}
+
+impl Hash for ObjectToken {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.as_ptr().hash(state)
+    }
+}
+
+thread_local! {
+    static OBJECTS_BEING_PRINTED: RefCell<HashSet<*mut Object>> = RefCell::new(HashSet::new());
+}
+
+impl fmt::Debug for ObjectToken {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        OBJECTS_BEING_PRINTED.with(|set| {
+            let existed = { set.borrow_mut().insert(self.0.as_ptr()) };
+            if existed {
+                let res = if let Ok(obj) = self.0.try_borrow() {
+                    fmt::Debug::fmt(&obj, f)
+                } else {
+                    f.write_str("<Object, borrowed>")
+                };
+                set.borrow_mut().remove(&self.0.as_ptr());
+                res
+            } else {
+                f.write_str("{...}")
+            }
+        })
+    }
+}
+
 impl Drop for ObjectToken {
     fn drop(&mut self) {
         // TODO: abort
@@ -346,7 +386,6 @@ impl Drop for ObjectToken {
     }
 }
 
-#[derive(Debug)]
 pub struct Object {
     pub members: HashMap<String, ObjectToken>,
     pub type_: TypeIndex,
@@ -360,6 +399,15 @@ impl Object {
             type_,
             data: vec![],
         }
+    }
+}
+
+impl fmt::Debug for Object {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        f.debug_struct("Object")
+            .field("type", &self.type_)
+            .field("values", &self.members)
+            .finish()
     }
 }
 
@@ -731,6 +779,15 @@ impl Interpreter {
             CreateInt { value } => Some(int::create_int(self, value)),
             Diag => {
                 println!("{:?}", self.thread.operation_stack);
+                None
+            }
+            DebugPrintObject => {
+                let item = self.thread
+                    .operation_stack
+                    .pop()
+                    .expect("Stack needs 1 item, was empty");
+                println!("{:?}", &item);
+                self.drop_token(item);
                 None
             }
         }

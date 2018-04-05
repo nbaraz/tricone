@@ -22,8 +22,6 @@ fn register_hello(interpreter: &mut Interpreter) -> TypeIndex {
             })
             .0;
 
-        let globals = module.globals.dup();
-
         use interpreter::Instruction::*;
         let func = Function::from_code(
             Code::create(vec![
@@ -47,11 +45,42 @@ fn register_hello(interpreter: &mut Interpreter) -> TypeIndex {
                 Diag,
             ]),
             0,
-            globals,
+            module.globals.dup(),
         );
         module.globals.assign_member(
             "hello".to_owned(),
             function_object_from_function(func),
+            interpreter,
+        );
+
+        let do_add = Function::from_code(
+            Code::create(vec![
+                CreateInt { value: 20 },
+                CreateInt { value: 22 },
+                CallMethod {
+                    name: "add".to_owned(),
+                    num_args: 1,
+                    use_result: true,
+                },
+                CallMethod {
+                    name: "tostring".to_owned(),
+                    num_args: 0,
+                    use_result: true,
+                },
+                CallMethod {
+                    name: "println".to_owned(),
+                    num_args: 0,
+                    use_result: false,
+                },
+                Diag,
+            ]),
+            0,
+            module.globals.dup(),
+        );
+
+        module.globals.assign_member(
+            "do_add".to_owned(),
+            function_object_from_function(do_add),
             interpreter,
         );
 
@@ -76,12 +105,28 @@ pub fn do_hello(interpreter: &mut Interpreter) {
                 num_args: 0,
                 use_result: false,
             },
+            GetModuleGlobals {
+                name: "hello".to_owned(),
+            },
+            GetMember {
+                name: "do_add".to_owned(),
+            },
+            CallFunctionObject {
+                num_args: 0,
+                use_result: false,
+            },
         ]),
         0,
         Scope::new(),
     );
 
-    let obj = func.call(interpreter, &[]);
-    assert!(obj.unwrap().is_none());
+    let obj = func.call(interpreter, &[]).unwrap();
+    match obj {
+        None => {}
+        Some(obj) => {
+            println!("Should be unreachable");
+            interpreter.drop_token(obj);
+        }
+    }
     interpreter.drop_token(func.closure.vars);
 }

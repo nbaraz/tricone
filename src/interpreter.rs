@@ -54,6 +54,9 @@ pub enum Instruction {
     CreateString {
         value: String,
     },
+    CreateInt {
+        value: i64,
+    },
     Diag,
 }
 
@@ -568,6 +571,8 @@ impl Interpreter {
     }
 
     pub fn run_instruction(&mut self, insn: &Instruction) -> Option<ObjectToken> {
+        println!("running {:?}", insn);
+
         use self::Instruction::*;
         match *insn {
             CreateObject { type_, num_args } => Some(self.create_object(type_, num_args)),
@@ -678,6 +683,7 @@ impl Interpreter {
                 }
             }
             CreateString { ref value } => Some(string::create_string(self, value.clone())),
+            CreateInt { value } => Some(int::create_int(self, value)),
             Diag => {
                 println!("{:?}", self.thread.operation_stack);
                 None

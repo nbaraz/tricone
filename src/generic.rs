@@ -1,5 +1,7 @@
 use interpreter::*;
+use string;
 
+use std::fmt;
 use std::mem;
 use std::ops::Add;
 use std::ptr;
@@ -95,6 +97,32 @@ pub fn impl_add_for<T: Add + Clone>(ty: &mut Type) {
 
         Some(res_obj)
     });
+}
+
+pub fn impl_display_for<T: fmt::Display>(ty: &mut Type) {
+    ty.register_method("tostring", 0, move |itrp, args| {
+        let obj = args[0].obj();
+        Some(string::create_string(
+            itrp,
+            format!("{}", unsafe { get_unsafe_ref::<T>(&obj) }),
+        ))
+    });
+}
+
+macro_rules! define_core_creator {
+    ($def_name:ident, $type:ty, $name:expr) => {
+        pub fn $def_name(interpreter: &mut Interpreter, value: $type) -> ObjectToken {
+            let tyidx = interpreter
+                .lookup_type(consts::CORE_MODULE_ID, $name)
+                .unwrap();
+            let token = interpreter.create_object(tyidx, 0);
+            {
+                let mut obj = token.obj_mut();
+                unsafe { generic::put_unsafe(&mut obj, value) }
+            }
+            token
+        }
+    };
 }
 
 pub trait TriconeDefault: Sized {

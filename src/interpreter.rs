@@ -755,7 +755,13 @@ impl Interpreter {
                     let function_ref = function_obj.obj();
 
                     // Should be a runtime error
-                    assert_eq!(function_ref.type_, consts::FUNCTION_TYPE_ID);
+                    if function_ref.type_ != consts::FUNCTION_TYPE_ID {
+                        panic!(
+                            "Expected function type ({:?}), got: {:?}",
+                            consts::FUNCTION_TYPE_ID,
+                            function_ref
+                        );
+                    }
                     let function = function::function_from_function_object(&function_ref);
 
                     function.call(self, &args).unwrap()

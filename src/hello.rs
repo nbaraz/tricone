@@ -46,6 +46,12 @@ fn register_hello(interpreter: &mut Interpreter) -> TypeIndex {
                 LookupName {
                     name: "do_add".to_owned(),
                 },
+                Assign {
+                    name: "do_add_2".to_owned(),
+                },
+                LookupName {
+                    name: "do_add_2".to_owned(),
+                },
                 CallFunctionObject {
                     num_args: 0,
                     use_result: false,

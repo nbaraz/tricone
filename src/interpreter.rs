@@ -611,14 +611,17 @@ impl Interpreter {
             CreateObject { type_, num_args } => Some(self.create_object(type_, num_args)),
             Assign { ref name } => {
                 let mut scope = self.thread
-                    .operation_stack
-                    .pop()
-                    .expect("Stack needs 2 items, 0 found");
+                    .frame_stack
+                    .last()
+                    .expect("Must have at least one scope")
+                    .vars
+                    .dup();
                 let item = self.thread
                     .operation_stack
                     .pop()
                     .expect("Stack needs 2 items, only 1 found");
-                scope.obj_mut().members.insert(name.clone(), item);
+                scope.assign_member(name.clone(), item, self);
+                self.drop_token(scope);
                 None
             }
             GetTopScope => Some(

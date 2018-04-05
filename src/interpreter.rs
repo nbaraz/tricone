@@ -160,6 +160,12 @@ macro_rules! assign_member_internal {
     };
 }
 
+macro_rules! with_internal_member {
+    ($target:expr, $name:expr, $func:expr) => {
+        $target.with_member_ref(concat!("!", $name), $func)
+    };
+}
+
 impl Scope {
     pub fn new() -> Scope {
         Scope {
@@ -193,10 +199,29 @@ impl Scope {
         get_internal_member!(self.vars, "parent").map(|obj| Scope::from_object(obj).unwrap())
     }
 
+    fn with_parent<F, O>(vars: &ObjectToken, func: F) -> O
+    where
+        F: FnOnce(Option<&ObjectToken>) -> O,
+    {
+        with_internal_member!(vars, "parent", func)
+    }
+
+    fn token_lookup_name(vars: &ObjectToken, name: &str) -> Option<ObjectToken> {
+        println!(
+            "looking for {} in {:?}",
+            name,
+            vars.obj().members.keys().collect::<Vec<_>>()
+        );
+        let opt = vars.get_member(name);
+        opt.or_else(|| {
+            Scope::with_parent(vars, |parent| {
+                parent.and_then(|p| Scope::token_lookup_name(p, name))
+            })
+        })
+    }
+
     fn lookup_name(&self, name: &str) -> Option<ObjectToken> {
-        self.vars
-            .get_member(name)
-            .or_else(|| self.parent().and_then(|parent| parent.lookup_name(name)))
+        Scope::token_lookup_name(&self.vars, name)
     }
 }
 
@@ -266,6 +291,14 @@ impl ObjectToken {
 
     fn get_member(&self, name: &str) -> Option<ObjectToken> {
         self.obj().members.get(name).map(ObjectToken::dup)
+    }
+
+    fn with_member_ref<F, O>(&self, name: &str, func: F) -> O
+    where
+        F: FnOnce(Option<&ObjectToken>) -> O,
+    {
+        let obj = self.obj();
+        (func)(obj.members.get(name))
     }
 
     pub fn assign_member(&self, name: String, obj: ObjectToken, interpreter: &mut Interpreter) {
@@ -643,7 +676,10 @@ impl Interpreter {
                 self.drop_token(item);
                 Some(res)
             }
-            LookupName { ref name } => self.thread.top_frame().lookup_name(name),
+            LookupName { ref name } => self.thread
+                .top_frame()
+                .lookup_name(name)
+                .or_else(|| panic!("Object does not exist! TODO: runtime error")),
             CallFunctionObject {
                 num_args,
                 use_result,

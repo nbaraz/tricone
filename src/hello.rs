@@ -43,6 +43,13 @@ fn register_hello(interpreter: &mut Interpreter) -> TypeIndex {
                     use_result: false,
                 },
                 Diag,
+                LookupName {
+                    name: "do_add".to_owned(),
+                },
+                CallFunctionObject {
+                    num_args: 0,
+                    use_result: false,
+                },
             ]),
             0,
             module.globals.dup(),

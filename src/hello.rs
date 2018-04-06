@@ -1,7 +1,55 @@
 use function::{function_object_from_function, Code, Function};
 use interpreter::*;
+use moduledef::*;
+
+use std::collections::HashMap;
+use std::iter::FromIterator;
 
 fn register_hello(interpreter: &mut Interpreter) -> TypeIndex {
+    let def = ModuleDef {
+        name: "Hello".to_owned(),
+        types: HashMap::from_iter(vec![
+            (
+                "Hello".to_owned(),
+                TypeDef {
+                    methods: HashMap::from_iter(vec![
+                        (
+                            "hello".to_owned(),
+                            FunctionDef::Native(NativeFunctionDef {
+                                arity: 1,
+                                code: Box::new(move |_itrp, _args| {
+                                    println!("hello from method!!");
+                                    None
+                                }),
+                            }),
+                        ),
+                        (
+                            consts::CREATE_METHOD_NAME.to_owned(),
+                            FunctionDef::Native(NativeFunctionDef {
+                                arity: 1,
+                                code: Box::new(move |_itrp, _args| {
+                                    println!("hello from CREATE method!!");
+                                    None
+                                }),
+                            }),
+                        ),
+                        (
+                            consts::DROP_METHOD_NAME.to_owned(),
+                            FunctionDef::Native(NativeFunctionDef {
+                                arity: 1,
+                                code: Box::new(move |_itrp, _args| {
+                                    println!("hello from DROP method!!");
+                                    None
+                                }),
+                            }),
+                        ),
+                    ]),
+                },
+            ),
+        ]),
+        free_functions: HashMap::from_iter(vec![]),
+    };
+
     let (_, ty_idx) = interpreter.create_module("hello", |interpreter, module| {
         let ty_idx = module
             .create_type(interpreter, "Hello", |_, _, ty| {

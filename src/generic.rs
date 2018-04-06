@@ -57,7 +57,7 @@ pub fn create_type_for<T: TriconeDefault, F>(
 {
     module.create_type(interpreter, name, |interpreter, module, ty| {
         // TODO: make this a 'static method'
-        ty.register_method(consts::CREATE_METHOD_NAME, 0, move |_itrp, args| {
+        ty.register_native_method(consts::CREATE_METHOD_NAME, 1, move |_itrp, args| {
             let mut target = args[0].obj_mut();
             unsafe {
                 initialize_object_from_val::<T>(
@@ -69,7 +69,7 @@ pub fn create_type_for<T: TriconeDefault, F>(
             None
         });
 
-        ty.register_method(consts::DROP_METHOD_NAME, 0, move |_itrp, args| {
+        ty.register_native_method(consts::DROP_METHOD_NAME, 1, move |_itrp, args| {
             let mut target = args[0].obj_mut();
             unsafe {
                 ptr::drop_in_place(get_unsafe_mut::<T>(&mut target) as *mut T);
@@ -82,7 +82,7 @@ pub fn create_type_for<T: TriconeDefault, F>(
 }
 
 pub fn impl_add_for<T: Add + Clone>(ty: &mut Type) {
-    ty.register_method("add", 1, move |itrp, args| {
+    ty.register_native_method("add", 2, move |itrp, args| {
         let a = args[0].obj();
         let b = args[1].obj();
 
@@ -100,7 +100,7 @@ pub fn impl_add_for<T: Add + Clone>(ty: &mut Type) {
 }
 
 pub fn impl_display_for<T: fmt::Display>(ty: &mut Type) {
-    ty.register_method("tostring", 0, move |itrp, args| {
+    ty.register_native_method("tostring", 1, move |itrp, args| {
         let obj = args[0].obj();
         Some(string::create_string(
             itrp,

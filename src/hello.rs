@@ -5,17 +5,17 @@ fn register_hello(interpreter: &mut Interpreter) -> TypeIndex {
     let (_, ty_idx) = interpreter.create_module("hello", |interpreter, module| {
         let ty_idx = module
             .create_type(interpreter, "Hello", |_, _, ty| {
-                ty.register_method("hello", 0, move |_itrp, _args| {
+                ty.register_native_method("hello", 1, move |_itrp, _args| {
                     println!("hello from method!!");
                     None
                 });
 
-                ty.register_method(consts::CREATE_METHOD_NAME, 0, move |_itrp, _args| {
+                ty.register_native_method(consts::CREATE_METHOD_NAME, 1, move |_itrp, _args| {
                     println!("hello from CREATE method!!");
                     None
                 });
 
-                ty.register_method(consts::DROP_METHOD_NAME, 0, move |_itrp, _args| {
+                ty.register_native_method(consts::DROP_METHOD_NAME, 1, move |_itrp, _args| {
                     println!("hello from DROP method!!");
                     None
                 });

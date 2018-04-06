@@ -84,18 +84,37 @@ impl Type {
         }
     }
 
+    pub fn scope(&self) -> &Scope {
+        &self.scope
+    }
+
     fn get_method(&self, name: &str) -> Option<Function> {
         self.methods.get(name).map(Function::dup)
     }
 
-    pub fn register_method<F>(&mut self, name: &str, arity: usize, code: F)
+    pub fn register_method(&mut self, name: &str, func: Function) {
+        self.methods.insert(name.to_owned(), func);
+    }
+
+    pub fn register_native_method<F>(&mut self, name: &str, arity: usize, code: F)
     where
         F: Fn(&mut Interpreter, &[ObjectToken]) -> Option<ObjectToken> + 'static,
     {
-        self.methods.insert(
-            name.to_owned(),
-            Function::new(code, arity + 1, self.scope.dup()),
-        );
+        assert!(arity >= 1);
+        let scope = self.scope.dup();
+        self.register_method(name, Function::new(code, arity, scope));
+    }
+
+    pub fn register_bytecode_method(
+        &mut self,
+        name: &str,
+        arity: usize,
+        instructions: Vec<Instruction>,
+    ) {
+        assert!(arity >= 1);
+        let code = function::Code::create(instructions);
+        let scope = self.scope.dup();
+        self.register_method(name, Function::from_code(code, arity, scope));
     }
 }
 

@@ -6,6 +6,7 @@ pub mod interpreter;
 pub mod generic;
 pub mod hello;
 pub mod int;
+pub mod moduledef;
 pub mod string;
 
 pub use interpreter::Interpreter;

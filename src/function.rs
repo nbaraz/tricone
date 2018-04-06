@@ -35,6 +35,18 @@ impl Function {
         }
     }
 
+    pub fn from_boxed_fn(code: Box<Fn(&mut Interpreter, &[ObjectToken]) -> Option<ObjectToken>>, arity: usize, closure: Scope) -> Function {
+                Function {
+            code: Code {
+                function: code.into(),
+            },
+            arity,
+            closure,
+        }
+
+    }
+
+
     pub fn from_code(code: Code, arity: usize, closure: Scope) -> Function {
         Function {
             code,

@@ -1,159 +1,127 @@
-use function::{function_object_from_function, Code, Function};
+use function::{Code, Function};
 use interpreter::*;
 use moduledef::*;
 
 use std::collections::HashMap;
 use std::iter::FromIterator;
 
-fn register_hello(interpreter: &mut Interpreter) -> TypeIndex {
+fn register_hello(interpreter: &mut Interpreter) {
+    use interpreter::Instruction::*;
     let def = ModuleDef {
-        name: "Hello".to_owned(),
-        types: HashMap::from_iter(vec![
+        name: "hello".to_owned(),
+        types: HashMap::from_iter(vec![(
+            "Hello".to_owned(),
+            TypeDef {
+                methods: HashMap::from_iter(vec![
+                    (
+                        "hello".to_owned(),
+                        FunctionDef::Native(NativeFunctionDef {
+                            arity: 1,
+                            code: Box::new(move |_itrp, _args| {
+                                println!("hello from method!!");
+                                None
+                            }),
+                        }),
+                    ),
+                    (
+                        consts::CREATE_METHOD_NAME.to_owned(),
+                        FunctionDef::Native(NativeFunctionDef {
+                            arity: 1,
+                            code: Box::new(move |_itrp, _args| {
+                                println!("hello from CREATE method!!");
+                                None
+                            }),
+                        }),
+                    ),
+                    (
+                        consts::DROP_METHOD_NAME.to_owned(),
+                        FunctionDef::Native(NativeFunctionDef {
+                            arity: 1,
+                            code: Box::new(move |_itrp, _args| {
+                                println!("hello from DROP method!!");
+                                None
+                            }),
+                        }),
+                    ),
+                ]),
+            },
+        )]),
+        free_functions: HashMap::from_iter(vec![
             (
-                "Hello".to_owned(),
-                TypeDef {
-                    methods: HashMap::from_iter(vec![
-                        (
-                            "hello".to_owned(),
-                            FunctionDef::Native(NativeFunctionDef {
-                                arity: 1,
-                                code: Box::new(move |_itrp, _args| {
-                                    println!("hello from method!!");
-                                    None
-                                }),
-                            }),
-                        ),
-                        (
-                            consts::CREATE_METHOD_NAME.to_owned(),
-                            FunctionDef::Native(NativeFunctionDef {
-                                arity: 1,
-                                code: Box::new(move |_itrp, _args| {
-                                    println!("hello from CREATE method!!");
-                                    None
-                                }),
-                            }),
-                        ),
-                        (
-                            consts::DROP_METHOD_NAME.to_owned(),
-                            FunctionDef::Native(NativeFunctionDef {
-                                arity: 1,
-                                code: Box::new(move |_itrp, _args| {
-                                    println!("hello from DROP method!!");
-                                    None
-                                }),
-                            }),
-                        ),
-                    ]),
-                },
+                "hello".to_owned(),
+                FunctionDef::Bytecode(BytecodeFunctionDef {
+                    arity: 0,
+                    instructions: vec![
+                        CreateObject {
+                            type_spec: ("hello".to_owned(), "Hello".to_owned()),
+                            num_args: 0,
+                        },
+                        CallMethod {
+                            name: "hello".to_owned(),
+                            num_args: 0,
+                            use_result: false,
+                        },
+                        CreateString {
+                            value: "Hello world!".to_owned(),
+                        },
+                        CallMethod {
+                            name: "println".to_owned(),
+                            num_args: 0,
+                            use_result: false,
+                        },
+                        Diag,
+                        LookupName {
+                            name: "do_add".to_owned(),
+                        },
+                        Assign {
+                            name: "do_add_2".to_owned(),
+                        },
+                        LookupName {
+                            name: "do_add_2".to_owned(),
+                        },
+                        CallFunctionObject {
+                            num_args: 0,
+                            use_result: false,
+                        },
+                        GetTopScope,
+                        Assign {
+                            name: "this".to_owned(),
+                        },
+                        GetTopScope,
+                        DebugPrintObject,
+                    ],
+                }),
+            ),
+            (
+                "do_add".to_owned(),
+                FunctionDef::Bytecode(BytecodeFunctionDef {
+                    arity: 0,
+                    instructions: vec![
+                        CreateInt { value: 20 },
+                        CreateInt { value: 22 },
+                        CallMethod {
+                            name: "add".to_owned(),
+                            num_args: 1,
+                            use_result: true,
+                        },
+                        CallMethod {
+                            name: "tostring".to_owned(),
+                            num_args: 0,
+                            use_result: true,
+                        },
+                        CallMethod {
+                            name: "println".to_owned(),
+                            num_args: 0,
+                            use_result: false,
+                        },
+                        Diag,
+                    ],
+                }),
             ),
         ]),
-        free_functions: HashMap::from_iter(vec![]),
     };
 
-    let (_, ty_idx) = interpreter.create_module("hello", |interpreter, module| {
-        let ty_idx = module
-            .create_type(interpreter, "Hello", |_, _, ty| {
-                ty.register_native_method("hello", 1, move |_itrp, _args| {
-                    println!("hello from method!!");
-                    None
-                });
-
-                ty.register_native_method(consts::CREATE_METHOD_NAME, 1, move |_itrp, _args| {
-                    println!("hello from CREATE method!!");
-                    None
-                });
-
-                ty.register_native_method(consts::DROP_METHOD_NAME, 1, move |_itrp, _args| {
-                    println!("hello from DROP method!!");
-                    None
-                });
-            })
-            .0;
-
-        use interpreter::Instruction::*;
-        let func = Function::from_code(
-            Code::create(vec![
-                CreateObject {
-                    type_: ty_idx,
-                    num_args: 0,
-                },
-                CallMethod {
-                    name: "hello".to_owned(),
-                    num_args: 0,
-                    use_result: false,
-                },
-                CreateString {
-                    value: "Hello world!".to_owned(),
-                },
-                CallMethod {
-                    name: "println".to_owned(),
-                    num_args: 0,
-                    use_result: false,
-                },
-                Diag,
-                LookupName {
-                    name: "do_add".to_owned(),
-                },
-                Assign {
-                    name: "do_add_2".to_owned(),
-                },
-                LookupName {
-                    name: "do_add_2".to_owned(),
-                },
-                CallFunctionObject {
-                    num_args: 0,
-                    use_result: false,
-                },
-                GetTopScope,
-                Assign {
-                    name: "this".to_owned(),
-                },
-                GetTopScope,
-                DebugPrintObject,
-            ]),
-            0,
-            module.globals.dup(),
-        );
-        module.globals.assign_member(
-            "hello".to_owned(),
-            function_object_from_function(func),
-            interpreter,
-        );
-
-        let do_add = Function::from_code(
-            Code::create(vec![
-                CreateInt { value: 20 },
-                CreateInt { value: 22 },
-                CallMethod {
-                    name: "add".to_owned(),
-                    num_args: 1,
-                    use_result: true,
-                },
-                CallMethod {
-                    name: "tostring".to_owned(),
-                    num_args: 0,
-                    use_result: true,
-                },
-                CallMethod {
-                    name: "println".to_owned(),
-                    num_args: 0,
-                    use_result: false,
-                },
-                Diag,
-            ]),
-            0,
-            module.globals.dup(),
-        );
-
-        module.globals.assign_member(
-            "do_add".to_owned(),
-            function_object_from_function(do_add),
-            interpreter,
-        );
-
-        ty_idx
-    });
-    ty_idx
+    def.register(interpreter);
 }
 
 pub fn do_hello(interpreter: &mut Interpreter) {

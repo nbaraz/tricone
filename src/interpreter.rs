@@ -28,7 +28,7 @@ pub struct TriconeError {
 #[derive(Debug, Clone)]
 pub enum Instruction {
     CreateObject {
-        type_: TypeIndex,
+        type_spec: (String, String),
         num_args: usize,
     },
     Assign {
@@ -681,7 +681,14 @@ impl Interpreter {
 
         use self::Instruction::*;
         match *insn {
-            CreateObject { type_, num_args } => Some(self.create_object(type_, num_args)),
+            CreateObject {
+                type_spec: (ref module, ref type_),
+                num_args,
+            } => {
+                let mod_idx = self.lookup_module_index(&module).unwrap();
+                let ty_idx = self.lookup_type(mod_idx, &type_).unwrap();
+                Some(self.create_object(ty_idx, num_args))
+            }
             Assign { ref name } => {
                 let mut scope = self.thread
                     .frame_stack

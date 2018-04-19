@@ -9,6 +9,7 @@ use std::ops::Deref;
 use std::process::abort;
 use std::rc::Rc;
 
+use bool_;
 use function::{self, Function};
 use int;
 use string;
@@ -59,6 +60,9 @@ pub enum Instruction {
     },
     CreateInt {
         value: i64,
+    },
+    CreateBool {
+        value: bool,
     },
     Diag,
     DebugPrintObject,
@@ -464,6 +468,7 @@ impl Interpreter {
             function::register_func_type(interpreter, module);
             int::register_int_type(interpreter, module);
             string::register_string_type(interpreter, module);
+            bool_::register_bool_type(interpreter, module);
         });
 
         interpreter
@@ -809,6 +814,7 @@ impl Interpreter {
             }
             CreateString { ref value } => Some(string::create_string(self, value.clone())),
             CreateInt { value } => Some(int::create_int(self, value)),
+            CreateBool { value } => Some(bool_::create_bool(self, value)),
             Diag => {
                 println!("{:?}", self.thread.operation_stack);
                 None

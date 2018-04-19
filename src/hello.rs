@@ -150,6 +150,17 @@ pub fn do_hello(interpreter: &mut Interpreter) {
                 num_args: 0,
                 use_result: false,
             },
+            CreateBool { value: true },
+            CallMethod {
+                num_args: 0,
+                use_result: true,
+                name: "tostring".to_owned(),
+            },
+            CallMethod {
+                num_args: 0,
+                use_result: false,
+                name: "println".to_owned(),
+            },
         ]),
         0,
         Scope::new(),

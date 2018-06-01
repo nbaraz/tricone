@@ -314,6 +314,7 @@ impl Thread {
     }
 }
 
+#[must_use]
 pub struct ObjectToken(Rc<RefCell<Object>>);
 
 impl ObjectToken {

@@ -400,7 +400,6 @@ impl fmt::Debug for ObjectToken {
 
 impl Drop for ObjectToken {
     fn drop(&mut self) {
-        // TODO: abort
         let obj = self.obj();
         println!(
             "Pass object tokens to the interpreter to destroy them, ty: {:?}, members: {:?}",

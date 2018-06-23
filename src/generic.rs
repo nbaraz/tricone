@@ -10,12 +10,12 @@ pub unsafe fn get_unsafe_copy<T: Copy>(obj: &Object) -> T {
     *get_unsafe_ref(obj)
 }
 
-pub unsafe fn get_unsafe_ref<T>(obj: &Object) -> &T {
+pub unsafe fn get_unsafe_ref<'a, T>(obj: &'a Object) -> &'a T {
     assert_eq!(obj.data.len(), aligned_allocation_size::<T>());
     &*(align_pointer::<T>(obj.data.as_ptr() as usize) as *const T)
 }
 
-pub unsafe fn get_unsafe_mut<T>(obj: &mut Object) -> &mut T {
+pub unsafe fn get_unsafe_mut<'a, T>(obj: &mut Object) -> &'a mut T {
     assert_eq!(obj.data.len(), aligned_allocation_size::<T>());
     &mut *(align_pointer::<T>(obj.data.as_mut_ptr() as usize) as *mut T)
 }

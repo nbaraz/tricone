@@ -282,11 +282,9 @@ impl Frame {
     }
 
     fn push_scope(&mut self, interpreter: &mut Interpreter) {
-        unsafe {
-            let scope = mem::replace(&mut self.top_scope, mem::uninitialized());
-            let uninitialized = mem::replace(&mut self.top_scope, scope.into_child(interpreter));
-            mem::forget(uninitialized);
-        }
+        let child = self.top_scope.dup().into_child(interpreter);
+        let temp = mem::replace(&mut self.top_scope, child);
+        interpreter.drop_token(temp.vars);
     }
 
     fn pop_scope(&mut self, interpreter: &mut Interpreter) {

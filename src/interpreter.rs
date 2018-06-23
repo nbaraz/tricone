@@ -13,6 +13,7 @@ use bool_;
 use function::{self, Function};
 use int;
 use string;
+use builtins;
 
 #[derive(Debug, Clone)]
 pub enum ErrorKind {
@@ -468,6 +469,7 @@ impl Interpreter {
             string::register_string_type(interpreter, module);
             bool_::register_bool_type(interpreter, module);
         });
+        builtins::register_builtins(&mut interpreter);
 
         interpreter
     }

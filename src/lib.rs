@@ -9,5 +9,6 @@ pub mod hello;
 pub mod int;
 pub mod moduledef;
 pub mod string;
+pub mod builtins;
 
 pub use interpreter::Interpreter;

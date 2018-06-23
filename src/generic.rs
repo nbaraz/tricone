@@ -118,7 +118,7 @@ macro_rules! define_core_creator {
             let token = interpreter.create_object(tyidx, 0);
             {
                 let mut obj = token.obj_mut();
-                unsafe { generic::put_unsafe(&mut obj, value) }
+                unsafe { $crate::generic::put_unsafe(&mut obj, value) }
             }
             token
         }

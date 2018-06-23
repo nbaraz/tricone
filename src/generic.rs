@@ -125,6 +125,24 @@ macro_rules! define_core_creator {
     };
 }
 
+macro_rules! define_into_native {
+    ($def_name:ident, $type:ty, $name:expr) => {
+        use $crate::interpreter::Object;
+
+        pub fn $def_name<'a>(interpreter: &Interpreter, obj: &'a Object) -> &'a $type {
+            let tyidx = interpreter
+                .lookup_type(consts::CORE_MODULE_ID, $name)
+                .unwrap();
+
+            if obj.type_ != tyidx {
+                // Todo: real error handling
+                panic!("Type error");
+            }
+            unsafe { $crate::generic::get_unsafe_ref(obj) }
+        }
+    };
+}
+
 pub trait TriconeDefault: Sized {
     fn tricone_default() -> Self;
 }

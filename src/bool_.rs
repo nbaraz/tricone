@@ -8,3 +8,4 @@ pub fn register_bool_type(interpreter: &mut Interpreter, module: &mut Module) {
 }
 
 define_core_creator!{create_bool, bool, "Bool"}
+define_into_native!{from_object, bool, "Bool"}

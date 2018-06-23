@@ -40,7 +40,7 @@ impl Function {
         arity: usize,
         closure: Scope,
     ) -> Function {
-                Function {
+        Function {
             code: Code {
                 function: code.into(),
             },
@@ -78,6 +78,20 @@ impl Function {
                     (self.code.function)(interpreter, args)
                 }),
             )
+        } else {
+            Err(TriconeError {
+                kind: ErrorKind::WrongArgumentCount,
+            })
+        }
+    }
+
+    pub fn call_in_frame(
+        &self,
+        interpreter: &mut Interpreter,
+        args: &[ObjectToken],
+    ) -> Result<Option<ObjectToken>, TriconeError> {
+        if self.arity == args.len() {
+            Ok(interpreter.with_new_scope(|interpreter| (self.code.function)(interpreter, args)))
         } else {
             Err(TriconeError {
                 kind: ErrorKind::WrongArgumentCount,

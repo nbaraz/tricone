@@ -65,6 +65,9 @@ pub enum Instruction {
     CreateBool {
         value: bool,
     },
+    Jump {
+        to: usize,
+    },
     Diag,
     DebugPrintObject,
 }
@@ -381,8 +384,8 @@ thread_local! {
 impl fmt::Debug for ObjectToken {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         OBJECTS_BEING_PRINTED.with(|set| {
-            let existed = { set.borrow_mut().insert(self.0.as_ptr()) };
-            if existed {
+            let didnt_exist = { set.borrow_mut().insert(self.0.as_ptr()) };
+            if didnt_exist {
                 let res = if let Ok(obj) = self.0.try_borrow() {
                     fmt::Debug::fmt(&obj, f)
                 } else {
@@ -627,7 +630,8 @@ impl Interpreter {
     fn call_method(&mut self, name: &str, args: &[ObjectToken]) -> Option<ObjectToken> {
         assert!(args.len() >= 1);
         let target = args.last().unwrap();
-        let method = self.get_method(&target.obj(), name)
+        let method = self
+            .get_method(&target.obj(), name)
             .expect("Called nonexistent method. TODO: runtime error");
         let res = method.call(self, args).unwrap();
         self.drop_token(method.closure.vars);
@@ -642,12 +646,27 @@ impl Interpreter {
 
     pub fn run_code(&mut self, instructions: &[Instruction]) -> Option<ObjectToken> {
         let mut prev = None;
-        for insn in instructions.iter() {
-            if let Some(res) = prev {
-                self.thread.operation_stack.push(res)
+        let num_instructions = instructions.len();
+        let mut pos = 0;
+
+        while pos < num_instructions {
+            let insn = unsafe { instructions.get_unchecked(pos) };
+            if let Instruction::Jump { to } = insn {
+                pos = *to;
+            } else {
+                if let Some(res) = prev {
+                    self.thread.operation_stack.push(res)
+                }
+                prev = self.run_instruction(insn);
+                pos += 1;
             }
-            prev = self.run_instruction(insn);
         }
+        // for insn in instructions.iter() {
+        //     if let Some(res) = prev {
+        //         self.thread.operation_stack.push(res)
+        //     }
+        //     prev = self.run_instruction(insn);
+        // }
         prev
     }
 
@@ -686,6 +705,7 @@ impl Interpreter {
 
         use self::Instruction::*;
         match *insn {
+            Jump { to: _ } => unreachable!(),
             CreateObject {
                 type_spec: (ref module, ref type_),
                 num_args,
@@ -695,13 +715,15 @@ impl Interpreter {
                 Some(self.create_object(ty_idx, num_args))
             }
             Assign { ref name } => {
-                let mut scope = self.thread
+                let mut scope = self
+                    .thread
                     .frame_stack
                     .last()
                     .expect("Must have at least one scope")
                     .vars
                     .dup();
-                let item = self.thread
+                let item = self
+                    .thread
                     .operation_stack
                     .pop()
                     .expect("Stack needs 2 items, only 1 found");
@@ -718,7 +740,8 @@ impl Interpreter {
                     .dup(),
             ),
             GetModuleGlobals { ref name } => {
-                let idx = self.lookup_module_index(name)
+                let idx = self
+                    .lookup_module_index(name)
                     .expect("Module does not exist! TODO: runtime error");
                 Some(self.get_module(idx).globals.vars.dup())
             }
@@ -749,7 +772,8 @@ impl Interpreter {
                 }
             }
             GetMember { ref name } => {
-                let item = self.thread
+                let item = self
+                    .thread
                     .operation_stack
                     .pop()
                     .expect("Stack needs 1 item, was empty");
@@ -764,7 +788,8 @@ impl Interpreter {
                 self.drop_token(item);
                 Some(res)
             }
-            LookupName { ref name } => self.thread
+            LookupName { ref name } => self
+                .thread
                 .top_frame()
                 .lookup_name(name)
                 .or_else(|| panic!("Object does not exist! TODO: runtime error")),
@@ -778,7 +803,8 @@ impl Interpreter {
 
                 let mut args = Vec::with_capacity(num_args);
                 self.get_args_from_stack(num_args, &mut args);
-                let function_obj = self.thread
+                let function_obj = self
+                    .thread
                     .operation_stack
                     .pop()
                     .expect("Need a function to call!");
@@ -820,7 +846,8 @@ impl Interpreter {
                 None
             }
             DebugPrintObject => {
-                let item = self.thread
+                let item = self
+                    .thread
                     .operation_stack
                     .pop()
                     .expect("Stack needs 1 item, was empty");
